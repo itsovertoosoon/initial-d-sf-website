@@ -26,7 +26,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 const YOUTUBE_CONFIG = {
-    API_KEY:    'AIzaSyD7OCuHlxuHY48LpiQVW3TUqWqkhrh7-TE',   // ← paste your API key here (in the quotes)
+    API_KEY:    '',   // ← set YOUTUBE_API_KEY in Netlify environment variables
     CHANNEL_ID: 'UCIpzydbJbZoAUFM8g8rgt2Q',   // ← paste your Channel ID here (starts with UC...)
 };
 

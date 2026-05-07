@@ -68,6 +68,17 @@ function readYouTubeConfig() {
     };
 }
 
+/* ── Inject API key from env var into data/videos.js at build time ──────── */
+function writeYouTubeConfigIfEnvSet() {
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (!apiKey) return;
+    const filePath = path.join(__dirname, 'data', 'videos.js');
+    const src      = fs.readFileSync(filePath, 'utf8');
+    const updated  = src.replace(/(API_KEY\s*:\s*)['"][^'"]*['"]/, `$1'${apiKey}'`);
+    fs.writeFileSync(filePath, updated, 'utf8');
+    console.log('[build] Injected YOUTUBE_API_KEY into data/videos.js');
+}
+
 /* ── Fetch + parse a gviz sheet ─────────────────────────────────────────── */
 async function fetchSheet(ref, range = '') {
     const param      = /^\d+$/.test(String(ref)) ? `gid=${ref}` : `sheet=${encodeURIComponent(ref)}`;
@@ -1039,6 +1050,7 @@ function taPlayerName(row) {
 async function main() {
     console.log('[build] Fetching data sources…');
 
+    writeYouTubeConfigIfEnvSet();
     const { apiKey, channelId } = readYouTubeConfig();
     const racers = readRacers();
     console.log(`[build] RACERS array: ${racers.length} players`);
