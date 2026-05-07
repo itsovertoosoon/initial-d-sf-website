@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Videos — Initial D San Francisco</title>
+    <meta name="description" content="Full archive of Initial D Arcade Stage V3 time attack runs and battle footage from the Initial D San Francisco community.">
+    <link rel="canonical" href="https://initialdsanfrancisco.com/videos.html">
+
+    <!-- Open Graph / social sharing -->
+    <meta property="og:type"        content="website">
+    <meta property="og:site_name"   content="Initial D San Francisco">
+    <meta property="og:url"         content="https://initialdsanfrancisco.com/videos.html">
+    <meta property="og:title"       content="Videos — Initial D San Francisco">
+    <meta property="og:description" content="Full archive of Initial D Arcade Stage V3 time attack runs and battle footage from the Initial D San Francisco community.">
+    <meta property="og:image"       content="https://initialdsanfrancisco.com/squad.jpg">
+    <meta name="twitter:card"       content="summary_large_image">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="apple-touch-icon" href="favicon.png">
+    <!-- PRERENDER:VIDEOS_JSONLD --><!-- /PRERENDER:VIDEOS_JSONLD -->
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-F6HVQ6WFF1"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-F6HVQ6WFF1');
+    </script>
+</head>
+<body>
+
+    <div class="scanlines" aria-hidden="true"></div>
+
+    <!-- PRERENDER:VIDEOS_NOSCRIPT --><!-- /PRERENDER:VIDEOS_NOSCRIPT -->
+
+    <!-- ── NAVIGATION ─────────────────────────────────── -->
+    <nav class="site-nav">
+        <a href="index.html" class="nav-logo">
+            <img src="Initial D San Francisco logo.png" alt="Initial D San Francisco" class="nav-logo-img" width="1920" height="1080">
+        </a>
+        <ul class="nav-links" id="nav-links">
+            <li><a href="index.html">HOME</a></li>
+            <li><a href="videos.html" class="nav-active">VIDEOS</a></li>
+            <li><a href="index.html#records">RECORDS</a></li>
+            <li><a href="courses.html">COURSES</a></li>
+            <li><a href="index.html#battles">BATTLES</a></li>
+            <li><a href="index.html#racers">RACERS</a></li>
+            <li><a href="index.html#about">ABOUT</a></li>
+            <li><a href="https://www.youtube.com/@InitialDSanFrancisco" target="_blank" rel="noopener" style="color:var(--orange)">YOUTUBE ↗</a></li>
+        </ul>
+        <button class="nav-toggle" id="nav-toggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
+    </nav>
+
+    <!-- ── PAGE HEADER ────────────────────────────────── -->
+    <div class="page-hero">
+        <div class="page-hero-inner">
+            <div class="section-tag">// FULL ARCHIVE</div>
+            <h1 class="page-hero-title">VIDEO <span class="accent-cyan">LIBRARY</span></h1>
+        </div>
+    </div>
+
+    <!-- ── CONTROLS + GRID ────────────────────────────── -->
+    <section class="section">
+
+        <!-- Row 1: Category tabs -->
+        <div class="track-tabs" id="category-tabs"></div>
+
+        <!-- Row 2: Course + Player secondary filters (contextual) -->
+        <div class="secondary-filters" id="video-secondary-filters" style="display:none">
+            <div class="sub-filter-row" id="video-course-row">
+                <span class="sub-filter-label">COURSE</span>
+                <div class="sub-tabs" id="video-course-tabs"></div>
+            </div>
+            <div class="sub-filter-row" id="video-player-row">
+                <span class="sub-filter-label">PLAYER</span>
+                <div class="sub-tabs" id="video-player-tabs"></div>
+            </div>
+        </div>
+
+        <!-- Sort + result count -->
+        <div class="controls-bar" style="margin-top:1.5rem">
+            <div class="sort-group">
+                <span class="controls-label">SORT</span>
+                <div class="sort-tabs" role="group" aria-label="Sort order">
+                    <button class="sort-tab active" data-sort="newest">NEWEST</button>
+                    <button class="sort-tab" data-sort="oldest">OLDEST</button>
+                </div>
+            </div>
+            <div class="result-count" id="result-count"></div>
+        </div>
+
+        <!-- Video grid -->
+        <div class="video-grid video-grid-large" id="video-grid" style="margin-top:1.25rem"></div>
+
+    </section>
+
+    <!-- ── FOOTER ──────────────────────────────────────── -->
+    <footer class="site-footer">
+        <img src="Initial D San Francisco logo.png" alt="Initial D San Francisco" class="footer-logo-img" width="1920" height="1080">
+        <p>San Francisco, CA &nbsp;·&nbsp; Initial D Arcade Stage V3 &nbsp;·&nbsp; YouTube</p>
+    </footer>
+
+    <script src="data/videos.js"></script>
+    <script src="js/youtube.js"></script>
+    <script src="js/videos.js"></script>
+</body>
+</html>

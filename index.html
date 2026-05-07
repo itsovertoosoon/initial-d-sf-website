@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Initial D San Francisco — Arcade Stage V3 Records &amp; Community</title>
+    <meta name="description" content="Time attack records, battle standings, and race footage from a group of Initial D Arcade Stage Version 3 players in the SF Bay Area.">
+    <link rel="canonical" href="https://initialdsanfrancisco.com/">
+
+    <!-- Open Graph / social sharing -->
+    <meta property="og:type"        content="website">
+    <meta property="og:site_name"   content="Initial D San Francisco">
+    <meta property="og:url"         content="https://initialdsanfrancisco.com/">
+    <meta property="og:title"       content="Initial D San Francisco — Arcade Stage V3 Records &amp; Community">
+    <meta property="og:description" content="Time attack records, battle standings, and race footage from a group of Initial D Arcade Stage Version 3 players in the SF Bay Area.">
+    <meta property="og:image"       content="https://initialdsanfrancisco.com/squad.jpg">
+    <meta name="twitter:card"       content="summary_large_image">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="apple-touch-icon" href="favicon.png">
+    <!-- PRERENDER:JSONLD --><!-- /PRERENDER:JSONLD -->
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-F6HVQ6WFF1"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-F6HVQ6WFF1');
+    </script>
+</head>
+<body>
+
+    <!-- Scanline CRT overlay — purely decorative -->
+    <div class="scanlines" aria-hidden="true"></div>
+
+    <!-- PRERENDER:NOSCRIPT --><!-- /PRERENDER:NOSCRIPT -->
+
+    <!-- ── NAVIGATION ───────────────────────── -->
+    <nav class="site-nav">
+        <a href="#home" class="nav-logo">
+            <img src="Initial D San Francisco logo.png" alt="Initial D San Francisco" class="nav-logo-img" width="1920" height="1080">
+        </a>
+        <ul class="nav-links" id="nav-links">
+            <li><a href="#home">HOME</a></li>
+            <li><a href="#videos">VIDEOS</a></li>
+            <li><a href="#records">RECORDS</a></li>
+            <li><a href="courses.html">COURSES</a></li>
+            <li><a href="#battles">BATTLES</a></li>
+            <li><a href="#racers">RACERS</a></li>
+            <li><a href="#about">ABOUT</a></li>
+            <li><a href="https://www.youtube.com/@InitialDSanFrancisco" target="_blank" rel="noopener" style="color:var(--orange)">YOUTUBE ↗</a></li>
+        </ul>
+        <button class="nav-toggle" id="nav-toggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
+    </nav>
+
+    <!-- ── HERO ─────────────────────────────── -->
+    <section id="home" class="hero">
+        <div class="hero-bg"></div>
+        <div class="hero-content">
+            <h1 class="hero-title">
+                Initial D<br>
+                <span class="accent-orange">San Francisco</span>
+            </h1>
+            <p class="hero-sub">Initial D Arcade Stage 3</p>
+            <a href="https://www.youtube.com/@InitialDSanFrancisco" target="_blank" rel="noopener" class="btn-primary">
+                WATCH ON YOUTUBE
+            </a>
+        </div>
+        <div class="hero-stats" id="hero-stats">
+            <div class="hero-stat">
+                <div class="hero-stat-value" id="stat-racers">—</div>
+                <div class="hero-stat-label">RACERS</div>
+            </div>
+            <div class="hero-stat-sep"></div>
+            <div class="hero-stat">
+                <div class="hero-stat-value" id="stat-records">—</div>
+                <div class="hero-stat-label">RECORDS</div>
+            </div>
+            <div class="hero-stat-sep"></div>
+            <div class="hero-stat">
+                <div class="hero-stat-value" id="stat-courses">—</div>
+                <div class="hero-stat-label">COURSES</div>
+            </div>
+            <div class="hero-stat-sep"></div>
+            <div class="hero-stat">
+                <div class="hero-stat-value" id="stat-elo1">—</div>
+                <div class="hero-stat-label">ELO LEADER</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── RECENT VIDEOS ─────────────────────── -->
+    <section id="videos" class="section">
+        <div class="section-header">
+            <div class="section-tag">// LATEST DROPS</div>
+            <h2>RECENT <span class="accent-cyan">VIDEOS</span></h2>
+        </div>
+        <div class="video-grid video-grid-home" id="video-grid">
+            <!-- Populated by js/main.js — edit the VIDEOS array in that file to add your videos -->
+        </div>
+        <div class="section-footer">
+            <a href="videos.html" class="btn-secondary">VIEW ALL VIDEOS →</a>
+        </div>
+    </section>
+
+    <!-- ── TIME ATTACK RECORDS ───────────────── -->
+    <div class="dark-band">
+        <section id="records" class="section">
+            <div class="section-header">
+                <div class="section-tag">// ARCADE CABINET · VERSION 3</div>
+                <h2>TIME ATTACK <span class="accent-orange">RECORDS</span></h2>
+            </div>
+            <!-- Row 1: Course tabs -->
+            <div class="track-tabs" id="track-tabs"></div>
+
+            <!-- Row 2: Direction + Condition secondary filters -->
+            <div class="secondary-filters" id="secondary-filters" style="display:none">
+                <div class="sub-filter-row">
+                    <span class="sub-filter-label">DIRECTION</span>
+                    <div class="sub-tabs" id="direction-tabs"></div>
+                </div>
+                <div class="sub-filter-row">
+                    <span class="sub-filter-label">CONDITION</span>
+                    <div class="sub-tabs" id="condition-tabs"></div>
+                </div>
+            </div>
+
+            <div class="leaderboard-container" id="leaderboard">
+                <div class="loading">LOADING DATA FROM GRID...</div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ── BATTLE LEADERBOARD ───────────────── -->
+    <section id="battles" class="section">
+        <div class="section-header">
+            <div class="section-tag">// RANKED PLAY · ELO RATED</div>
+            <h2>BATTLE <span class="accent-red">STANDINGS</span></h2>
+        </div>
+        <div id="battle-leaderboard">
+            <div class="loading">LOADING STANDINGS...</div>
+        </div>
+    </section>
+
+    <!-- ── RACERS ────────────────────────────── -->
+    <section id="racers" class="section">
+        <div class="section-header">
+            <div class="section-tag">// THE GRID</div>
+            <h2>RACERS <span class="accent-green">ROSTER</span></h2>
+        </div>
+        <div class="racer-grid" id="racer-grid"></div>
+    </section>
+
+    <!-- ── RACER DETAIL PANEL ──────────────── -->
+    <div id="racer-detail" class="racer-detail-band" style="display:none" aria-live="polite">
+        <div class="racer-detail-inner" id="racer-detail-content"></div>
+    </div>
+
+    <!-- ── ABOUT ─────────────────────────────── -->
+    <div class="dark-band">
+        <section id="about" class="section">
+            <div class="section-tag">// EST. SF, CA</div>
+            <h2 style="font-family:var(--font-display);font-size:clamp(2rem,5vw,3.5rem);letter-spacing:0.05em;margin-bottom:1.5rem">
+                ABOUT <span class="accent-cyan">THE CHANNEL</span>
+            </h2>
+            <div class="about-body">
+                <p>
+                    Initial D San Francisco is a community of people who play Initial D Arcade Stage Version 3 in the SF Bay Area.
+                </p>
+                <p>
+                    Our channel isn't about posting the absolute fastest times, just documenting washed-up players from 20 years ago
+                    slowly shaking off the rust and chatting about the good ol' days.
+                </p>
+                <p>
+                    If you'd like to reach us, please send an email to <a href="mailto:initialdsanfrancisco@gmail.com" class="contact-link">initialdsanfrancisco@gmail.com</a>
+                </p>
+            </div>
+
+            <div class="community-block">
+                <div class="section-tag" style="margin-bottom:1.25rem">// INITIAL D VER.3 COMMUNITY</div>
+                <div class="community-links">
+                    <a class="community-link" href="https://www.youtube.com/@TeamReiatsu" target="_blank" rel="noopener">@TeamReiatsu</a>
+                    <a class="community-link" href="https://www.youtube.com/@_sonexay" target="_blank" rel="noopener">@_sonexay</a>
+                    <a class="community-link" href="https://www.youtube.com/@TXIDPlayers" target="_blank" rel="noopener">@TXIDPlayers</a>
+                    <a class="community-link" href="https://www.youtube.com/@larmo917" target="_blank" rel="noopener">@larmo917</a>
+                    <a class="community-link" href="https://www.youtube.com/@ShadowVirus916" target="_blank" rel="noopener">@ShadowVirus916</a>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ── FOOTER ────────────────────────────── -->
+    <footer class="site-footer">
+        <img src="Initial D San Francisco logo.png" alt="Initial D San Francisco" class="footer-logo-img" width="1920" height="1080">
+        <p>San Francisco, CA &nbsp;·&nbsp; Initial D Arcade Stage V3 &nbsp;·&nbsp; <a href="https://www.youtube.com/@InitialDSanFrancisco" target="_blank" rel="noopener" style="color:var(--orange);text-decoration:none">YouTube ↗</a></p>
+    </footer>
+
+    <script src="data/videos.js"></script>
+    <script src="js/youtube.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
