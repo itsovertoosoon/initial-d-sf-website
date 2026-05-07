@@ -1195,10 +1195,10 @@ function initNav() {
    HERO STATS STRIP
    ════════════════════════════════════════════════════════════ */
 function updateHeroStats(updates = {}) {
-    if ('racers'  in updates) document.getElementById('stat-racers') ?.textContent = updates.racers;
-    if ('records' in updates) document.getElementById('stat-records')?.textContent = updates.records;
-    if ('courses' in updates) document.getElementById('stat-courses')?.textContent = updates.courses;
-    if ('elo1'    in updates) document.getElementById('stat-elo1')   ?.textContent = updates.elo1;
+    if ('racers'  in updates) { const el = document.getElementById('stat-racers');  if (el) el.textContent = updates.racers; }
+    if ('records' in updates) { const el = document.getElementById('stat-records'); if (el) el.textContent = updates.records; }
+    if ('courses' in updates) { const el = document.getElementById('stat-courses'); if (el) el.textContent = updates.courses; }
+    if ('elo1'    in updates) { const el = document.getElementById('stat-elo1');    if (el) el.textContent = updates.elo1; }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
