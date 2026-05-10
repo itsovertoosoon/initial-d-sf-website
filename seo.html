@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Initial D SF — Video SEO Agent</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #161616;
+    --surface-2: #1f1f1f;
+    --border: #2a2a2a;
+    --text: #e8e8e8;
+    --text-dim: #888;
+    --accent: #ff3838;
+    --accent-yellow: #ffd23f;
+    --success: #4ade80;
+    --warn: #f59e0b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  header { border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 24px; }
+  h1 { font-family: 'Bebas Neue', Impact, sans-serif; font-size: 32px; letter-spacing: 2px; color: var(--accent); }
+  .subtitle { color: var(--text-dim); font-size: 13px; margin-top: 4px; }
+  .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 0; }
+  .tab {
+    padding: 12px 24px; background: transparent; border: none;
+    color: var(--text-dim); font-family: inherit; font-size: 14px;
+    cursor: pointer; border-bottom: 2px solid transparent;
+    letter-spacing: 1px; text-transform: uppercase;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .panel { display: none; padding-top: 24px; }
+  .panel.active { display: block; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .field { margin-bottom: 14px; }
+  label { display: block; font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  input, select { width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; font-family: inherit; font-size: 14px; border-radius: 4px; }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  input.resolved { border-color: var(--success); color: var(--success); }
+  input.unresolved { border-color: var(--warn); }
+  .car-hint { font-size: 11px; margin-top: 5px; min-height: 16px; }
+  .car-hint.ok { color: var(--success); }
+  .car-hint.warn { color: var(--warn); }
+
+  .player-block { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 16px; margin-bottom: 14px; }
+  .player-block h3 { font-family: 'Bebas Neue', Impact, sans-serif; font-size: 18px; letter-spacing: 2px; color: var(--accent-yellow); margin-bottom: 12px; }
+  .record-row { display: grid; grid-template-columns: 1fr 80px 80px 90px; gap: 8px; align-items: end; margin-bottom: 10px; }
+  .record-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; padding-top: 6px; }
+  .pct-display { background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 10px 8px; font-size: 13px; color: var(--success); text-align: center; }
+
+  .lookup-bar { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+  .lookup-status { font-size: 12px; color: var(--text-dim); }
+  .lookup-status.ok { color: var(--success); }
+  .lookup-status.err { color: var(--accent); }
+  .lookup-status.loading { color: var(--accent-yellow); }
+
+  .actions { display: flex; gap: 12px; margin-top: 20px; }
+  button.primary { background: var(--accent); color: #fff; border: none; padding: 12px 24px; font-family: inherit; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; border-radius: 4px; }
+  button.primary:hover { background: #e62e2e; }
+  button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); padding: 12px 24px; font-family: inherit; font-size: 13px; cursor: pointer; border-radius: 4px; }
+  button.secondary:hover { border-color: var(--text-dim); }
+
+  .output-section { margin-top: 28px; border-top: 1px solid var(--border); padding-top: 24px; }
+  .output-block { margin-bottom: 24px; }
+  .output-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .output-label { font-family: 'Bebas Neue', Impact, sans-serif; font-size: 16px; letter-spacing: 2px; color: var(--accent-yellow); }
+  .copy-btn { background: transparent; color: var(--text-dim); border: 1px solid var(--border); padding: 4px 12px; font-family: inherit; font-size: 11px; cursor: pointer; border-radius: 4px; text-transform: uppercase; letter-spacing: 1px; }
+  .copy-btn:hover { color: var(--text); border-color: var(--text-dim); }
+  .copy-btn.copied { color: var(--success); border-color: var(--success); }
+  .output-box { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 14px; font-family: inherit; font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; color: var(--text); min-height: 40px; }
+  .output-box.title-box { font-size: 14px; }
+
+  .hint { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  .car-ref { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
+  .car-ref summary { font-size: 12px; color: var(--text-dim); cursor: pointer; text-transform: uppercase; letter-spacing: 1px; }
+  .car-ref summary:hover { color: var(--text); }
+  .car-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px; margin-top: 12px; }
+  .car-entry { font-size: 11px; color: var(--text-dim); }
+  .car-entry span { color: var(--accent-yellow); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Initial D SF — Video SEO Agent</h1>
+    <div class="subtitle">Generate YouTube titles &amp; descriptions</div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="ta">Time Attack</button>
+    <button class="tab" data-tab="battle">Battle</button>
+  </div>
+
+  <!-- ============== TIME ATTACK ============== -->
+  <div class="panel active" id="panel-ta">
+    <div class="grid-2">
+      <div class="field">
+        <label>Stage</label>
+        <select id="ta-stage">
+          <option value="">— select —</option>
+          <option>Myogi</option><option>Usui</option><option>Akagi</option>
+          <option>Akina</option><option>Irohazaka</option><option>Akina Snow</option>
+          <option>Happogahara</option><option>Shomaru</option><option>Tsuchisaka</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Direction</label>
+        <select id="ta-direction">
+          <option value="">— select —</option>
+          <option>Downhill</option><option>Uphill</option>
+          <option>Counter Clockwise</option><option>Clockwise</option>
+          <option>Outbound</option><option>Inbound</option><option>Reverse</option>
+        </select>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="field">
+        <label>Conditions</label>
+        <select id="ta-conditions">
+          <option value="">— select —</option>
+          <option>Dry</option><option>Wet</option><option>Snow</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Time</label>
+        <input type="text" id="ta-time" placeholder="e.g. 2'47&quot;062">
+        <div class="hint">Format: M'SS"mmm</div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="field">
+        <label>Handle</label>
+        <input type="text" id="ta-handle" placeholder="e.g. NEMUI" list="handle-list">
+      </div>
+      <div class="field">
+        <label>Car <span style="color:var(--text-dim);font-size:10px;">(abbrev)</span></label>
+        <input type="text" id="ta-car" placeholder="e.g. 180SX, AE86, EVO5" oninput="resolveCarTA()">
+        <div class="car-hint" id="ta-car-hint"></div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="primary" onclick="generateTA()">Generate</button>
+      <button class="secondary" onclick="clearTA()">Clear</button>
+    </div>
+    <div class="output-section" id="ta-output" style="display:none;">
+      <div class="output-block">
+        <div class="output-header"><div class="output-label">Title</div><button class="copy-btn" data-target="ta-title-out">Copy</button></div>
+        <div class="output-box title-box" id="ta-title-out"></div>
+      </div>
+      <div class="output-block">
+        <div class="output-header"><div class="output-label">Description</div><button class="copy-btn" data-target="ta-desc-out">Copy</button></div>
+        <div class="output-box" id="ta-desc-out"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== BATTLE ============== -->
+  <div class="panel" id="panel-battle">
+    <div class="grid-2">
+      <div class="field">
+        <label>Stage</label>
+        <select id="b-stage">
+          <option value="">— select —</option>
+          <option>Myogi</option><option>Usui</option><option>Akagi</option>
+          <option>Akina</option><option>Irohazaka</option><option>Akina Snow</option>
+          <option>Happogahara</option><option>Shomaru</option><option>Tsuchisaka</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Direction</label>
+        <select id="b-direction">
+          <option value="">— select —</option>
+          <option>Downhill</option><option>Uphill</option>
+          <option>Counter Clockwise</option><option>Clockwise</option>
+          <option>Outbound</option><option>Inbound</option><option>Reverse</option>
+        </select>
+      </div>
+    </div>
+    <div class="field" style="max-width:50%;">
+      <label>Conditions</label>
+      <select id="b-conditions">
+        <option value="">— select —</option>
+        <option>Dry</option><option>Wet</option><option>Snow</option>
+      </select>
+    </div>
+
+    <!-- Lookup -->
+    <div class="lookup-bar">
+      <button class="primary" onclick="lookupStats()" id="lookup-btn">↓ Lookup Stats</button>
+      <div class="lookup-status" id="lookup-status"></div>
+    </div>
+
+    <!-- Player A -->
+    <div class="player-block">
+      <h3>Player A</h3>
+      <div class="grid-2">
+        <div class="field">
+          <label>Handle</label>
+          <input type="text" id="pa-handle" placeholder="e.g. NEMUI" list="handle-list">
+        </div>
+        <div class="field">
+          <label>Car <span style="color:var(--text-dim);font-size:10px;">(abbrev)</span></label>
+          <input type="text" id="pa-car" placeholder="e.g. 180SX, AE86, EVO5" oninput="resolveCarB('pa')">
+          <div class="car-hint" id="pa-car-hint"></div>
+        </div>
+      </div>
+      <div style="margin-top:4px;">
+        <div class="record-row">
+          <div class="record-label">Overall W/L</div>
+          <div><label>Wins</label><input type="number" id="pa-ow" min="0" value="" placeholder="0" oninput="updatePcts()"></div>
+          <div><label>Losses</label><input type="number" id="pa-ol" min="0" value="" placeholder="0" oninput="updatePcts()"></div>
+          <div><label>Win %</label><div class="pct-display" id="pa-op">—</div></div>
+        </div>
+        <div class="record-row">
+          <div class="record-label" id="pa-h2h-label">Vs. opponent</div>
+          <div><label>Wins</label><input type="number" id="pa-hw" min="0" value="" placeholder="0" oninput="updatePcts()"></div>
+          <div><label>Losses</label><input type="number" id="pa-hl" min="0" value="" placeholder="0" oninput="updatePcts()"></div>
+          <div><label>Win %</label><div class="pct-display" id="pa-hp">—</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Player B -->
+    <div class="player-block">
+      <h3>Player B</h3>
+      <div class="grid-2">
+        <div class="field">
+          <label>Handle</label>
+          <input type="text" id="pb-handle" placeholder="e.g. BAKA" list="handle-list">
+        </div>
+        <div class="field">
+          <label>Car <span style="color:var(--text-dim);font-size:10px;">(abbrev)</span></label>
+          <input type="text" id="pb-car" placeholder="e.g. 180SX, AE86, EVO5" oninput="resolveCarB('pb')">
+          <div class="car-hint" id="pb-car-hint"></div>
+        </div>
+      </div>
+      <div style="margin-top:4px;">
+        <div class="record-row">
+          <div class="record-label">Overall W/L</div>
+          <div><label>Wins</label><input type="number" id="pb-ow" min="0" value="" placeholder="0" oninput="updatePcts()"></div>
+          <div><label>Losses</label><input type="number" id="pb-ol" min="0" value="" placeholder="0" oninput="updatePcts()"></div>
+          <div><label>Win %</label><div class="pct-display" id="pb-op">—</div></div>
+        </div>
+        <div class="record-row">
+          <div class="record-label" id="pb-h2h-label">Vs. opponent</div>
+          <div><label>Wins</label><input type="number" id="pb-hw" min="0" value="" placeholder="0" oninput="updatePcts()"></div>
+          <div><label>Losses</label><input type="number" id="pb-hl" min="0" value="" placeholder="0" oninput="updatePcts()"></div>
+          <div><label>Win %</label><div class="pct-display" id="pb-hp">—</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="primary" onclick="generateBattle()">Generate</button>
+      <button class="secondary" onclick="clearBattle()">Clear</button>
+    </div>
+
+    <div class="output-section" id="b-output" style="display:none;">
+      <div class="output-block">
+        <div class="output-header"><div class="output-label">Title</div><button class="copy-btn" data-target="b-title-out">Copy</button></div>
+        <div class="output-box title-box" id="b-title-out"></div>
+      </div>
+      <div class="output-block">
+        <div class="output-header"><div class="output-label">Description</div><button class="copy-btn" data-target="b-desc-out">Copy</button></div>
+        <div class="output-box" id="b-desc-out"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- car reference -->
+  <details class="car-ref">
+    <summary>Car abbreviation reference</summary>
+    <div class="car-grid" id="car-ref-grid"></div>
+  </details>
+
+  <datalist id="handle-list">
+    <option value="BAKA"><option value="NEMUI"><option value="DUSK"><option value="NEFFR">
+    <option value="RYUKI"><option value="CHON!"><option value="SLK"><option value="VIRUS">
+    <option value="JJ"><option value="WHAT?"><option value="(.Y.)"><option value="HT">
+  </datalist>
+</div>
+
+<script>
+// ── Car map: abbrev → [title string, full description name] ──────────────
+// title string = used in YouTube title (your shorthand)
+// full name    = used in description body (canonical game name)
+const CAR_MAP = {
+
+  // ── Toyota ───────────────────────────────────────────────────────────
+  'AE86':        ['AE86',        'Sprinter Trueno GT-APEX (AE86)'],
+  '86':          ['AE86',        'Sprinter Trueno GT-APEX (AE86)'],
+  '86L':         ['86L',         'Corolla Levin GT-APEX (AE86)'],
+  'LEVIN':       ['86L',         'Corolla Levin GT-APEX (AE86)'],
+  'AE85':        ['AE85',        'Corolla Levin SR (AE85)'],
+  '85':          ['AE85',        'Corolla Levin SR (AE85)'],
+  'MR2':         ['MR2',         'MR2 G-Limited (SW20)'],
+  'SW20':        ['MR2',         'MR2 G-Limited (SW20)'],
+  'MRS':         ['MRS',         'MR-S S-Edition (ZZW30)'],
+  'MR-S':        ['MRS',         'MR-S S-Edition (ZZW30)'],
+  'ZZW30':       ['MRS',         'MR-S S-Edition (ZZW30)'],
+  'ST205':       ['ST205',       'Celica GT-Four (ST205)'],
+  'CELICA':      ['ST205',       'Celica GT-Four (ST205)'],
+  'ALTEZZA':     ['Altezza',     'Altezza RS200 (SXE10)'],
+  'SXE10':       ['Altezza',     'Altezza RS200 (SXE10)'],
+
+  // ── Nissan ───────────────────────────────────────────────────────────
+  '180SX':       ['180SX',       '180SX Type X (RPS13)'],
+  'SIL80':       ['Sil80',       'Sileighty (RPS13)'],
+  'SILEIGHTY':   ['Sil80',       'Sileighty (RPS13)'],
+  'S13':         ['S13',         'Silvia K\'s (S13)'],
+  'S14K':        ['S14K',        'Silvia K\'s Aero (S14)'],
+  'S14Q':        ['S14Q',        'Silvia Q\'s (S14)'],
+  'S14':         ['S14Q',        'Silvia Q\'s (S14)'],   // default S14 = Q's per common usage
+  'S15':         ['S15',         'Silvia spec-R (S15)'],
+  'R32':         ['R32',         'Skyline GT-R V-spec II (BNR32)'],
+  'BNR32':       ['R32',         'Skyline GT-R V-spec II (BNR32)'],
+  'R34':         ['R34',         'Skyline GT-R V-spec II (BNR34)'],
+  'BNR34':       ['R34',         'Skyline GT-R V-spec II (BNR34)'],
+  'ER34':        ['ER34',        'Skyline 25GT Turbo (ER34)'],
+
+  // ── Mazda ────────────────────────────────────────────────────────────
+  'FC':          ['FC',          'RX-7 ∞III (FC3S)'],
+  'FC3S':        ['FC',          'RX-7 ∞III (FC3S)'],
+  'FD':          ['FD',          'RX-7 Type R (FD3S)'],
+  'FD3S':        ['FD',          'RX-7 Type R (FD3S)'],
+  'FD-SR':       ['FD-SR',       'RX-7 Spirit R Type A (FD3S)'],
+  'FDSR':        ['FD-SR',       'RX-7 Spirit R Type A (FD3S)'],
+  'SPIRIT R':    ['FD-SR',       'RX-7 Spirit R Type A (FD3S)'],
+  'RX-8':        ['RX-8',        'RX-8 Type S (SE3P)'],
+  'RX8':         ['RX-8',        'RX-8 Type S (SE3P)'],
+  'SE3P':        ['RX-8',        'RX-8 Type S (SE3P)'],
+  'NB':          ['NB',          'Roadster RS (NB8C)'],
+  'NB8C':        ['NB',          'Roadster RS (NB8C)'],
+  'NA':          ['NA',          'Roadster (NA6C)'],
+  'NA6C':        ['NA',          'Roadster (NA6C)'],
+
+  // ── Mitsubishi ───────────────────────────────────────────────────────
+  'EVO3':        ['EVO3',        'Lancer Evo III (CE9A)'],
+  'EVO4':        ['EVO4',        'Lancer Evo IV (CN9A)'],
+  'EVO5':        ['EVO5',        'Lancer Evo V (CP9A)'],
+  'EVO6':        ['EVO6',        'Lancer Evo VI T.M. Edition (CP9A)'],
+  'EVO7':        ['EVO7',        'Lancer Evo VII (CT9A)'],
+
+  // ── Subaru ───────────────────────────────────────────────────────────
+  'GC8':         ['GC8',         'Impreza WRX STi Sedan Type R Version VI (GC8)'],
+  'GC8V':        ['GC8V',        'Impreza WRX STi Coupe Type R Version V (GC8V)'],
+  'GDB':         ['GDB',         'Impreza WRX STi (GDB)'],
+
+  // ── Honda ────────────────────────────────────────────────────────────
+  'EG6':         ['EG6',         'Civic SiR (EG6)'],
+  'EK9':         ['EK9',         'Civic Type R (EK9)'],
+  'DC2':         ['DC2',         'Integra Type R (DC2)'],
+  'AP1':         ['AP1',         'S2000 (AP1)'],
+  'S2000':       ['AP1',         'S2000 (AP1)'],
+
+  // ── Suzuki ───────────────────────────────────────────────────────────
+  'CAPPUCCINO':  ['Cappuccino',  'Cappuccino (EA11R)'],
+  'CAPP':        ['Cappuccino',  'Cappuccino (EA11R)'],
+  'EA11R':       ['Cappuccino',  'Cappuccino (EA11R)'],
+};
+
+function resolveCar(abbrev) {
+  if (!abbrev) return null;
+  return CAR_MAP[abbrev.toUpperCase().trim()] || null;
+}
+
+// ── Populate car reference list ──────────────────────────────────────────
+(function buildRef() {
+  const grid = document.getElementById('car-ref-grid');
+  const seen = new Set();
+  Object.entries(CAR_MAP).forEach(([abbrev, [title, full]]) => {
+    if (seen.has(full)) return;
+    seen.add(full);
+    const d = document.createElement('div');
+    d.className = 'car-entry';
+    d.innerHTML = `<span>${abbrev}</span> → ${full}`;
+    grid.appendChild(d);
+  });
+})();
+
+// ── Live car resolution hints ────────────────────────────────────────────
+function resolveCarTA() {
+  const input = document.getElementById('ta-car');
+  const hint = document.getElementById('ta-car-hint');
+  const result = resolveCar(input.value);
+  if (!input.value) { hint.textContent = ''; input.classList.remove('resolved','unresolved'); return; }
+  if (result) {
+    hint.textContent = '→ ' + result[1];
+    hint.className = 'car-hint ok';
+    input.classList.add('resolved'); input.classList.remove('unresolved');
+  } else {
+    hint.textContent = 'Unknown — will use as-is';
+    hint.className = 'car-hint warn';
+    input.classList.add('unresolved'); input.classList.remove('resolved');
+  }
+}
+
+function resolveCarB(prefix) {
+  const input = document.getElementById(prefix + '-car');
+  const hint = document.getElementById(prefix + '-car-hint');
+  const result = resolveCar(input.value);
+  if (!input.value) { hint.textContent = ''; input.classList.remove('resolved','unresolved'); return; }
+  if (result) {
+    hint.textContent = '→ ' + result[1];
+    hint.className = 'car-hint ok';
+    input.classList.add('resolved'); input.classList.remove('unresolved');
+  } else {
+    hint.textContent = 'Unknown — will use as-is';
+    hint.className = 'car-hint warn';
+    input.classList.add('unresolved'); input.classList.remove('resolved');
+  }
+}
+
+// ── H2H labels update when handles change ───────────────────────────────
+['pa-handle','pb-handle'].forEach(id => {
+  document.getElementById(id).addEventListener('input', updateH2HLabels);
+});
+function updateH2HLabels() {
+  const a = document.getElementById('pa-handle').value.trim() || 'opponent';
+  const b = document.getElementById('pb-handle').value.trim() || 'opponent';
+  document.getElementById('pa-h2h-label').textContent = 'Vs. ' + b;
+  document.getElementById('pb-h2h-label').textContent = 'Vs. ' + a;
+}
+
+// ── Percentage helpers ───────────────────────────────────────────────────
+function calcPct(w, l) {
+  const t = w + l;
+  if (t === 0 || isNaN(t)) return null;
+  return ((w / t) * 100).toFixed(1);
+}
+function numVal(id) {
+  const v = parseInt(document.getElementById(id).value, 10);
+  return isNaN(v) ? 0 : Math.max(0, v);
+}
+function fmtRecord(w, l) {
+  const p = calcPct(w, l);
+  return p !== null ? `${w}-${l} (${p}%)` : `${w}-${l}`;
+}
+
+function updatePcts() {
+  [['pa-ow','pa-ol','pa-op'],['pa-hw','pa-hl','pa-hp'],
+   ['pb-ow','pb-ol','pb-op'],['pb-hw','pb-hl','pb-hp']].forEach(([w,l,out]) => {
+    const wn = numVal(w), ln = numVal(l);
+    const p = calcPct(wn, ln);
+    document.getElementById(out).textContent = p !== null ? p + '%' : '—';
+  });
+}
+
+// ── Sheet CSV endpoints ──────────────────────────────────────────────────
+const BATTLE_STATS_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vT0kIHho49xgZtUEaE5ZSzO7zcU6r9wb-5HoE5rFX5qSk6iQ27dQPzDTLAD9ZkqsuefYwPMSpYIsFyb/pub?gid=844634428&single=true&output=csv';
+const BATTLE_LOG_URL   = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vT0kIHho49xgZtUEaE5ZSzO7zcU6r9wb-5HoE5rFX5qSk6iQ27dQPzDTLAD9ZkqsuefYwPMSpYIsFyb/pub?gid=1322076132&single=true&output=csv';
+
+// ── CSV parser ───────────────────────────────────────────────────────────
+function parseCSV(text, headerMarker) {
+  const lines = text.trim().split('\n');
+  // If headerMarker given, scan for the line containing it (handles sheets with preamble rows)
+  let startIdx = 0;
+  if (headerMarker) {
+    const found = lines.findIndex(l => l.toLowerCase().includes(headerMarker.toLowerCase()));
+    if (found !== -1) startIdx = found;
+  }
+  const headers = splitCSVLine(lines[startIdx]);
+  return lines.slice(startIdx + 1).map(line => {
+    const vals = splitCSVLine(line);
+    const obj = {};
+    headers.forEach((h, i) => obj[h.trim()] = (vals[i] || '').trim());
+    return obj;
+  }).filter(row => Object.values(row).some(v => v !== ''));
+}
+
+function splitCSVLine(line) {
+  const result = [];
+  let cur = '', inQuote = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { inQuote = !inQuote; }
+    else if (c === ',' && !inQuote) { result.push(cur); cur = ''; }
+    else { cur += c; }
+  }
+  result.push(cur);
+  return result;
+}
+
+// ── Live stats lookup ────────────────────────────────────────────────────
+async function lookupStats() {
+  const aH = sval('pa-handle'), bH = sval('pb-handle');
+  if (!aH || !bH) {
+    setLookupStatus('Enter both handles first', 'err'); return;
+  }
+
+  const btn = document.getElementById('lookup-btn');
+  btn.disabled = true;
+  setLookupStatus('Fetching stats…', 'loading');
+
+  try {
+    // Fetch both sheets in parallel
+    const [statsRes, logRes] = await Promise.all([
+      fetch(BATTLE_STATS_URL),
+      fetch(BATTLE_LOG_URL)
+    ]);
+    if (!statsRes.ok || !logRes.ok) throw new Error('Fetch failed');
+
+    const [statsText, logText] = await Promise.all([
+      statsRes.text(), logRes.text()
+    ]);
+
+    const stats = parseCSV(statsText, 'Rank');
+    const log   = parseCSV(logText);
+
+    // ── Overall W/L from Battle Records by Racer ──
+    // Columns: Rank, Racer, ELO, Wins, Losses, Matches, Win %, Streak, Last Active
+    function findOverall(handle) {
+      return stats.find(r => r['Racer'] && r['Racer'].trim().toUpperCase() === handle.toUpperCase());
+    }
+
+    const aStats = findOverall(aH);
+    const bStats = findOverall(bH);
+
+    // Debug: log all racer names found in the sheet
+    console.log('Battle Records headers:', Object.keys(stats[0] || {}));
+    console.log('All racers in sheet:', stats.map(r => JSON.stringify(r['Racer'])));
+
+    if (!aStats) { setLookupStatus(`"${aH}" not found — see console for racer list`, 'err'); btn.disabled = false; return; }
+    if (!bStats) { setLookupStatus(`"${bH}" not found — see console for racer list`, 'err'); btn.disabled = false; return; }
+
+    // ── H2H from Battle Log ──
+    // Columns include: Racer A, Racer B, Winner (and others)
+    // Find column names first
+    const sampleRow = log[0] || {};
+    const keys = Object.keys(sampleRow);
+
+    // Try to detect column names flexibly
+    const racerACol = keys.find(k => /racer.?a/i.test(k) || k.toLowerCase() === 'player a' || k.toLowerCase() === 'racer a') || 'Racer A';
+    const racerBCol = keys.find(k => /racer.?b/i.test(k) || k.toLowerCase() === 'player b' || k.toLowerCase() === 'racer b') || 'Racer B';
+    const winnerCol = keys.find(k => /winner/i.test(k)) || 'Winner';
+
+    let aH2HWins = 0, aH2HLosses = 0;
+    log.forEach(row => {
+      const rA = (row[racerACol] || '').trim().toUpperCase();
+      const rB = (row[racerBCol] || '').trim().toUpperCase();
+      const winner = (row[winnerCol] || '').trim().toUpperCase();
+      const aUp = aH.toUpperCase(), bUp = bH.toUpperCase();
+
+      const isThisMatchup = (rA === aUp && rB === bUp) || (rA === bUp && rB === aUp);
+      if (!isThisMatchup) return;
+
+      if (winner === aUp) aH2HWins++;
+      else if (winner === bUp) aH2HLosses++;
+    });
+
+    // ── Populate fields ──
+    setField('pa-ow', aStats['Wins']   || '0');
+    setField('pa-ol', aStats['Losses'] || '0');
+    setField('pa-hw', String(aH2HWins));
+    setField('pa-hl', String(aH2HLosses));
+    setField('pb-ow', bStats['Wins']   || '0');
+    setField('pb-ol', bStats['Losses'] || '0');
+    setField('pb-hw', String(aH2HLosses)); // B's H2H wins = A's H2H losses
+    setField('pb-hl', String(aH2HWins));   // B's H2H losses = A's H2H wins
+    updatePcts();
+
+    const total = aH2HWins + aH2HLosses;
+    setLookupStatus(
+      `✓ Stats loaded — ${aH} ${aStats['Wins']}W ${aStats['Losses']}L overall, `+
+      `${aH2HWins}-${aH2HLosses} vs ${bH} (${total} battles)`,
+      'ok'
+    );
+  } catch (e) {
+    setLookupStatus('Fetch error — check sheet is published', 'err');
+    console.error(e);
+  }
+
+  btn.disabled = false;
+}
+
+function setField(id, val) {
+  document.getElementById(id).value = val;
+}
+
+function setLookupStatus(msg, type) {
+  const el = document.getElementById('lookup-status');
+  el.textContent = msg;
+  el.className = 'lookup-status ' + (type || '');
+}
+
+// ── Boilerplate ──────────────────────────────────────────────────────────
+const BOILERPLATE = `🔥 About the Channel
+Initial D San Francisco is a community of people who play Initial D Arcade Stage Version 3 in the SF Bay Area.  Our channel isn't about posting the absolute fastest times, just documenting washed-up players from 20 years ago slowly shaking off the rust and chatting about the good ol' days.
+
+🎮 Subscribe for daily uploads of time attacks, battles, and silly discussions.
+
+🌐 Website / Leaderboard:
+https://initialdsanfrancisco.com
+
+📍 Recorded at our private Initial D Version 3 twin machine in San Francisco, CA
+
+💬 Want to play or collaborate?
+Message us at initialdsanfrancisco@gmail.com
+
+#InitialD #InitialDArcadeStage #IDAS`;
+
+// ── Tab switching ────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+function carTitle(abbrev) {
+  const r = resolveCar(abbrev);
+  return r ? r[0] : abbrev;
+}
+function carFull(abbrev) {
+  const r = resolveCar(abbrev);
+  return r ? r[1] : abbrev;
+}
+function sval(id) { return document.getElementById(id).value.trim(); }
+
+// ── Time Attack generation ───────────────────────────────────────────────
+function generateTA() {
+  const stage = sval('ta-stage'), dir = sval('ta-direction'),
+        cond = sval('ta-conditions'), time = sval('ta-time'),
+        handle = sval('ta-handle'), carAbbrev = sval('ta-car');
+  if (!stage || !dir || !cond || !time || !handle || !carAbbrev) {
+    alert('Please fill in all fields.'); return;
+  }
+  const titleCar = carTitle(carAbbrev);
+  const fullCar  = carFull(carAbbrev);
+
+  const title = `Initial D Arcade Stage Ver.3 — Time Attack ${handle} ${titleCar} ${stage} ${dir} ${cond} ${time}`;
+  const desc  = `Initial D Arcade Stage Ver.3 Time Attack
+
+Driver: ${handle}
+Car: ${fullCar}
+Course: ${stage} ${dir}
+Conditions: ${cond}
+Time: ${time}
+
+${BOILERPLATE}`;
+
+  document.getElementById('ta-title-out').textContent = title;
+  document.getElementById('ta-desc-out').textContent  = desc;
+  document.getElementById('ta-output').style.display  = 'block';
+}
+function clearTA() {
+  ['ta-stage','ta-direction','ta-conditions','ta-time','ta-handle','ta-car'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('ta-car-hint').textContent = '';
+  document.getElementById('ta-car').classList.remove('resolved','unresolved');
+  document.getElementById('ta-output').style.display = 'none';
+}
+
+// ── Battle generation ────────────────────────────────────────────────────
+function generateBattle() {
+  const stage = sval('b-stage'), dir = sval('b-direction'), cond = sval('b-conditions');
+  const aH = sval('pa-handle'), aCAbbrev = sval('pa-car');
+  const bH = sval('pb-handle'), bCAbbrev = sval('pb-car');
+  if (!stage || !dir || !cond || !aH || !bH || !aCAbbrev || !bCAbbrev) {
+    alert('Please fill in stage, direction, conditions, and both players (handle + car).'); return;
+  }
+
+  const aTitleCar = carTitle(aCAbbrev), aFullCar = carFull(aCAbbrev);
+  const bTitleCar = carTitle(bCAbbrev), bFullCar = carFull(bCAbbrev);
+
+  const aOW = numVal('pa-ow'), aOL = numVal('pa-ol');
+  const aHW = numVal('pa-hw'), aHL = numVal('pa-hl');
+  const bOW = numVal('pb-ow'), bOL = numVal('pb-ol');
+  const bHW = numVal('pb-hw'), bHL = numVal('pb-hl');
+
+  const title = `Initial D Arcade Stage Ver.3 — Battle: ${stage}/${dir} — ${aH} (${aTitleCar}) vs ${bH} (${bTitleCar})`;
+
+  const desc = `Initial D Arcade Stage Ver.3 Battle
+
+Course: ${stage} ${dir}
+Conditions: ${cond}
+
+Pre-Match Record
+${aH} (${aFullCar})
+Overall W/L: ${fmtRecord(aOW, aOL)}
+Vs. ${bH}: ${fmtRecord(aHW, aHL)}
+
+${bH} (${bFullCar})
+Overall W/L: ${fmtRecord(bOW, bOL)}
+Vs. ${aH}: ${fmtRecord(bHW, bHL)}
+
+${BOILERPLATE}`;
+
+  document.getElementById('b-title-out').textContent = title;
+  document.getElementById('b-desc-out').textContent  = desc;
+  document.getElementById('b-output').style.display  = 'block';
+}
+
+function clearBattle() {
+  ['b-stage','b-direction','b-conditions','pa-handle','pa-car','pb-handle','pb-car'].forEach(id => document.getElementById(id).value = '');
+  ['pa-ow','pa-ol','pa-hw','pa-hl','pb-ow','pb-ol','pb-hw','pb-hl'].forEach(id => document.getElementById(id).value = '');
+  ['pa-car-hint','pb-car-hint'].forEach(id => document.getElementById(id).textContent = '');
+  ['pa-car','pb-car'].forEach(id => document.getElementById(id).classList.remove('resolved','unresolved'));
+  document.getElementById('b-output').style.display = 'none';
+  updatePcts();
+  updateH2HLabels();
+}
+
+// ── Copy buttons ─────────────────────────────────────────────────────────
+document.querySelectorAll('.copy-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const text = document.getElementById(btn.dataset.target).textContent;
+    try { await navigator.clipboard.writeText(text); }
+    catch { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); }
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
+  });
+});
+</script>
+</body>
+</html>
