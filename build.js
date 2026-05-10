@@ -71,6 +71,7 @@ function readYouTubeConfig() {
 /* ── Inject API key from env var into data/videos.js at build time ──────── */
 function writeYouTubeConfigIfEnvSet() {
     const apiKey = process.env.YOUTUBE_API_KEY;
+    console.log(`[build] YOUTUBE_API_KEY env var: ${apiKey ? 'found (' + apiKey.slice(-4) + ')' : 'NOT SET'}`);
     if (!apiKey) return;
     const filePath = path.join(__dirname, 'data', 'videos.js');
     const src      = fs.readFileSync(filePath, 'utf8');
