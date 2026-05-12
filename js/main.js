@@ -149,6 +149,13 @@ async function initLeaderboard() {
 
     updateHeroStats({ records: allRecords.length });
 
+    const distinctRacers = new Set(
+        allRecords
+            .map(r => normalizeName(r['Identity'] || r['Player Tag'] || r['Tag_clean'] || ''))
+            .filter(Boolean)
+    ).size;
+    updateHeroStats({ racers: distinctRacers });
+
     const tracks = [...new Set(allRecords.map(r => r['Map']).filter(Boolean))];
     buildTrackTabs(tracks);
 

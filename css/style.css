@@ -193,6 +193,12 @@ a.nav-logo {
     text-transform: uppercase;
 }
 
+.hero-stat-link {
+    color: inherit;
+    text-decoration: none;
+}
+.hero-stat-link:hover .hero-stat-value { color: var(--accent-cyan); }
+
 .hero-stat-sep {
     width: 1px;
     height: 2.2rem;
