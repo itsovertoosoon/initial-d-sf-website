@@ -113,6 +113,7 @@ async function fetchYouTubeVideos(apiKey, channelId) {
     const chRes  = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=contentDetails&id=${channelId}&key=${apiKey}`);
     const chData = await chRes.json();
     if (chData.error) throw new Error(`YouTube: ${chData.error.message}`);
+    if (!chData.items?.length) throw new Error('YouTube: channel not found or no uploads playlist');
     const uploadsId = chData.items[0].contentDetails.relatedPlaylists.uploads;
     let videos = [], pageToken = '';
     do {
@@ -191,7 +192,7 @@ function getPlayerTA(taRecords, playerName) {
         return iNorm ? iNorm === nameNorm : tNorm === nameNorm;
     });
     if (!records.length) return {};
-    records.sort((a, b) => (a['Time_ms'] || 9999999) - (b['Time_ms'] || 9999999));
+    records.sort((a, b) => timeToMs(a) - timeToMs(b));
     const seen = new Set();
     records = records.filter(r => {
         const key = `${r['Car_clean']||r['Car']||''}|${r['Map']}|${r['Direction']}|${r['Condition']}`;
@@ -221,6 +222,14 @@ function fmtPct(val) {
     return String(val);
 }
 function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+// Parse a lap-time string like 2'44"581 to milliseconds; fallback when Time_ms is null.
+function timeToMs(r) {
+    const ms = r['Time_ms'];
+    if (ms != null && ms > 0) return ms;
+    const s = String(r['Time'] || '').replace(/[''ʼ′]/g, "'").replace(/[""″]/g, '"');
+    const m = s.match(/^(\d+)'(\d+)["](\d+)$/);
+    return m ? (+m[1] * 60000 + +m[2] * 1000 + +m[3]) : 9999999;
+}
 function injectMarker(html, markerName, content) {
     const start = `<!-- PRERENDER:${markerName} -->`;
     const end   = `<!-- /PRERENDER:${markerName} -->`;
@@ -243,7 +252,7 @@ function generateRacerPage(racer, taByCar, battle, h2h, standing) {
     const abbr          = name.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || '??';
 
     const avatarHtml = imgSrc
-        ? `<img class="rp-avatar" src="${esc(imgSrc)}" alt="${esc(name)}" width="120" height="120" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        ? `<img class="rp-avatar" src="${esc(imgSrc)}" alt="${esc(name)}" width="120" height="120" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
            <div class="rp-avatar-placeholder" style="display:none">${abbr}</div>`
         : `<div class="rp-avatar-placeholder">${abbr}</div>`;
 
@@ -543,8 +552,8 @@ function generateCoursesIndex(taRecords, battleLog) {
             r['Course'] && r['Course'].toLowerCase() === course.toLowerCase()
         ).length;
         const fastest = taRecords
-            .filter(r => r['Map'] === course && r['Time_ms'])
-            .sort((a, b) => a['Time_ms'] - b['Time_ms'])[0];
+            .filter(r => r['Map'] === course && (r['Time_ms'] || r['Time']))
+            .sort((a, b) => timeToMs(a) - timeToMs(b))[0];
 
         return `
         <a class="ci-card" href="courses/${s}.html">
@@ -1056,19 +1065,25 @@ async function main() {
     const racers = readRacers();
     console.log(`[build] RACERS array: ${racers.length} players`);
 
-    const [taRecords, battleStandings, battleStatsRaw, h2hRaw, battleLog, ytVideos] = await Promise.all([
+    const sheetLabels = ['TA records', 'Battle standings', 'Battle stats', 'H2H', 'Battle log', 'YouTube'];
+    const results = await Promise.allSettled([
         fetchSheet('0'),
         fetchSheet('Battle Records by Racer', 'A4:I'),
         fetchSheet('Racers by Course'),
         fetchSheet('Head_to_Head'),
         fetchSheet(BATTLE_LOG_GID),
         (apiKey && channelId)
-            ? fetchYouTubeVideos(apiKey, channelId).catch(err => {
-                console.warn(`[build] YouTube fetch skipped: ${err.message}`);
-                return [];
-              })
+            ? fetchYouTubeVideos(apiKey, channelId)
             : Promise.resolve([]),
     ]);
+
+    const [taRecords, battleStandings, battleStatsRaw, h2hRaw, battleLog, ytVideos] = results.map((r, i) => {
+        if (r.status === 'rejected') {
+            console.warn(`[build] ${sheetLabels[i]} fetch failed: ${r.reason?.message ?? r.reason}`);
+            return [];
+        }
+        return r.value;
+    });
 
     console.log(`[build] TA: ${taRecords.length} rows, Standings: ${battleStandings.length}, Battle stats: ${battleStatsRaw.length}, H2H: ${h2hRaw.length}, Battle log: ${battleLog.length}, Videos: ${ytVideos.length}`);
 

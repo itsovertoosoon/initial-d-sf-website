@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
     <title>Initial D San Francisco — Arcade Stage V3 Records &amp; Community</title>
     <meta name="description" content="Time attack records, battle standings, and race footage from a group of Initial D Arcade Stage Version 3 players in the SF Bay Area.">
     <link rel="canonical" href="https://initialdsanfrancisco.com/">
@@ -14,6 +15,9 @@
     <meta property="og:title"       content="Initial D San Francisco — Arcade Stage V3 Records &amp; Community">
     <meta property="og:description" content="Time attack records, battle standings, and race footage from a group of Initial D Arcade Stage Version 3 players in the SF Bay Area.">
     <meta property="og:image"       content="https://initialdsanfrancisco.com/squad.jpg">
+    <meta property="og:image:alt"   content="Initial D San Francisco crew photo">
+    <meta property="og:image:width" content="5712">
+    <meta property="og:image:height" content="4284">
     <meta name="twitter:card"       content="summary_large_image">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -46,7 +50,7 @@
         </a>
         <ul class="nav-links" id="nav-links">
             <li><a href="#home">HOME</a></li>
-            <li><a href="#videos">VIDEOS</a></li>
+            <li><a href="videos.html">VIDEOS</a></li>
             <li><a href="#records">RECORDS</a></li>
             <li><a href="courses.html">COURSES</a></li>
             <li><a href="#battles">BATTLES</a></li>
@@ -133,6 +137,7 @@
                 </div>
             </div>
 
+            <div id="lb-announcement" aria-live="polite" class="sr-only"></div>
             <div class="leaderboard-container" id="leaderboard">
                 <div class="loading">LOADING DATA FROM GRID...</div>
             </div>
@@ -159,9 +164,9 @@
         <div class="racer-grid" id="racer-grid"></div>
     </section>
 
-    <!-- ── RACER DETAIL PANEL ──────────────── -->
-    <div id="racer-detail" class="racer-detail-band" style="display:none" aria-live="polite">
-        <div class="racer-detail-inner" id="racer-detail-content"></div>
+    <!-- ── RACER DETAIL MODAL ───────────────── -->
+    <div id="racer-detail" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Racer profile" aria-live="polite">
+        <div class="modal" id="racer-detail-content"></div>
     </div>
 
     <!-- ── ABOUT ─────────────────────────────── -->
@@ -199,12 +204,13 @@
 
     <!-- ── FOOTER ────────────────────────────── -->
     <footer class="site-footer">
-        <img src="Initial D San Francisco logo.png" alt="Initial D San Francisco" class="footer-logo-img" width="1920" height="1080">
+        <img src="Initial D San Francisco logo.png" alt="Initial D San Francisco" class="footer-logo-img" loading="lazy" width="1920" height="1080">
         <p>San Francisco, CA &nbsp;·&nbsp; Initial D Arcade Stage V3 &nbsp;·&nbsp; <a href="https://www.youtube.com/@InitialDSanFrancisco" target="_blank" rel="noopener" style="color:var(--orange);text-decoration:none">YouTube ↗</a></p>
     </footer>
 
     <script src="data/videos.js"></script>
     <script src="js/youtube.js"></script>
+    <script src="js/world-records.js"></script>
     <script src="js/main.js"></script>
 </body>
 </html>

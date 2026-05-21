@@ -43,7 +43,7 @@ async function loadVideos() {
 
         const uploadsId = chData.items[0].contentDetails.relatedPlaylists.uploads;
 
-        // 2. Fetch videos from that playlist (up to 50 per page, max 2 pages = 100 videos)
+        // 2. Fetch videos from that playlist (50 per page, up to 10 pages = 500 videos max)
         let videos    = [];
         let pageToken = '';
         let pages     = 0;
@@ -74,7 +74,7 @@ async function loadVideos() {
             videos    = videos.concat(batch);
             pageToken = data.nextPageToken || '';
             pages++;
-        } while (pageToken); // fetch all videos — no page cap
+        } while (pageToken && pages < 10); // safety cap: 10 pages × 50 = 500 videos max
 
         writeYTCache(videos);
         return { status: 'ok', videos: applyTags(videos) };
@@ -83,7 +83,7 @@ async function loadVideos() {
         console.error('[YouTube] Load failed:', err.message);
         // Fall back to stale cache if available, rather than showing nothing
         const stale = readYTCache(true);
-        if (stale) return { status: 'ok', videos: applyTags(stale) };
+        if (stale) return { status: 'stale', videos: applyTags(stale) };
         return { status: 'error', message: err.message };
     }
 }

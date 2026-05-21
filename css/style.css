@@ -197,7 +197,7 @@ a.nav-logo {
     color: inherit;
     text-decoration: none;
 }
-.hero-stat-link:hover .hero-stat-value { color: var(--accent-cyan); }
+.hero-stat-link:hover .hero-stat-value { color: var(--cyan); }
 
 .hero-stat-sep {
     width: 1px;
@@ -1144,6 +1144,11 @@ a.nav-logo {
 @media (max-width: 480px) {
     .racer-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
     .track-tab { font-size: 0.72rem; padding: 0.32rem 0.7rem; }
+    /* Hide DIRECTION and CONDITION columns — already shown in filter tabs above */
+    .lb-col-dir,
+    .lb-col-cond { display: none; }
+    /* Reduce homepage videos from 6 to 3 — 6 stacked is too much vertical scroll */
+    .video-grid-home .video-card:nth-child(n+4) { display: none; }
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -1427,6 +1432,18 @@ a.nav-logo {
     color: var(--orange);
 }
 
+/* ── Course link inside TA records table (racer detail panel) ── */
+.ta-course-link {
+    color: var(--text);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    transition: color 0.15s, border-bottom-color 0.15s;
+}
+.ta-course-link:hover {
+    color: var(--orange);
+    border-bottom-color: var(--orange);
+}
+
 /* ── Small video grid inside racer detail ── */
 .detail-video-grid {
     display: grid;
@@ -1441,4 +1458,32 @@ a.nav-logo {
     .detail-avatar-placeholder { width: 72px; height: 72px; font-size: 2rem; }
     .racer-detail-inner { padding: 1.75rem 1.25rem 2.5rem; }
     .detail-player-info { gap: 1rem; }
+}
+
+/* ── World record strip ──────────────────────────────────── */
+.wr-strip {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.8rem;
+    padding: 0.55rem 0.75rem;
+    margin-top: 0.5rem;
+    border-left: 2px solid var(--cyan);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+}
+.wr-label { color: var(--muted); letter-spacing: 0.04em; }
+.wr-time  { color: var(--cyan); font-weight: 700; }
+.wr-sep   { color: var(--muted); }
+.wr-gap   { color: var(--muted); }
+
+/* ── Accessibility utilities ─────────────────────────────── */
+.sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }

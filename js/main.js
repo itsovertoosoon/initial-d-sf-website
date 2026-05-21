@@ -45,6 +45,12 @@ function trackEvent(name, params = {}) {
 
 /* ── UTILITIES ────────────────────────────────────────────── */
 
+function escHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = String(s ?? '');
+    return d.innerHTML;
+}
+
 // Normalize a name to uppercase letters+digits only for fuzzy matching
 function normalizeName(s) {
     return String(s || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -91,17 +97,25 @@ function fetchSheetData(sheetRef, range = '') {
             : `sheet=${encodeURIComponent(sheetRef)}`;
         const rangeParam = range ? `&range=${encodeURIComponent(range)}` : '';
 
+        const cleanup = () => { delete window[cb]; document.getElementById(cb)?.remove(); };
+
+        const timer = setTimeout(() => {
+            cleanup();
+            console.error('Sheet fetch timed out for ' + param);
+            resolve([]);
+        }, 10000);
+
         window[cb] = function(response) {
-            delete window[cb];
-            document.getElementById(cb)?.remove();
+            clearTimeout(timer);
+            cleanup();
             resolve(response?.table ? parseGvizTable(response.table) : []);
         };
 
         const script   = document.createElement('script');
         script.id      = cb;
         script.onerror = () => {
-            delete window[cb];
-            script.remove();
+            clearTimeout(timer);
+            cleanup();
             console.error('Sheet fetch failed for ' + param);
             resolve([]);
         };
@@ -158,6 +172,9 @@ async function initLeaderboard() {
 
     const tracks = [...new Set(allRecords.map(r => r['Map']).filter(Boolean))];
     buildTrackTabs(tracks);
+
+    // Fire-and-forget: re-renders leaderboard footer when WR data arrives
+    loadWorldRecords();
 
     document.getElementById('direction-tabs').addEventListener('click', e => {
         const btn = e.target.closest('.sub-tab');
@@ -255,7 +272,7 @@ function filterAndRender() {
     if (activeCond !== 'all') records = records.filter(r => r['Condition'] === activeCond);
 
     // Sort fastest first
-    records.sort((a, b) => (a['Time_ms'] || 9999999) - (b['Time_ms'] || 9999999));
+    records.sort((a, b) => timeToMs(a) - timeToMs(b));
 
     // Dedup: keep only the fastest time per player+car combo.
     // Falls back through Identity → Player Tag → Tag_clean so it works
@@ -280,12 +297,31 @@ function filterAndRender() {
     const showCond = activeCond === 'all';
     const showDir  = activeDir  === 'all';
 
+    // World record strip — shows WR time + gap from our P1 (if data loaded)
+    const _dirAbbr = DIR_TO_ABBR[activeDir] || activeDir;
+    const _wrMs    = getWorldRecord(activeTrack, _dirAbbr, activeCond || 'Dry');
+    const _p1Ms    = records.length ? timeToMs(records[0]) : null;
+    let _wrStripHtml = '';
+    if (_wrMs && _p1Ms !== null) {
+        const gapMs  = _p1Ms - _wrMs;
+        const gapStr = gapMs >= 0
+            ? `+${(gapMs / 1000).toFixed(3)}s behind WR`
+            : `${Math.abs(gapMs / 1000).toFixed(3)}s ahead of WR`;
+        _wrStripHtml = `
+        <div class="wr-strip">
+            <span class="wr-label">// WORLD RECORD</span>
+            <span class="wr-time">${formatWrMs(_wrMs)}</span>
+            <span class="wr-sep">·</span>
+            <span class="wr-gap">OUR BEST IS ${gapStr}</span>
+        </div>`;
+    }
+
     lb.innerHTML = `
         <table class="leaderboard-table">
             <thead><tr>
                 <th>RANK</th><th>PLAYER</th><th>CAR</th><th>TIME</th>
-                ${showCond ? '<th>COND</th>' : ''}
-                ${showDir  ? '<th>DIR</th>'  : ''}
+                ${showCond ? '<th class="lb-col-cond">COND</th>' : ''}
+                ${showDir  ? '<th class="lb-col-dir">DIR</th>'   : ''}
             </tr></thead>
             <tbody>
                 ${records.map((r, i) => {
@@ -310,14 +346,15 @@ function filterAndRender() {
                 <tr>
                     <td><span class="rank-badge rank-${i + 1}">${i + 1}</span></td>
                     <td>${playerCell}</td>
-                    <td style="color:var(--muted);font-size:0.88em">${r['Car_clean'] || r['Car'] || '—'}</td>
+                    <td style="color:var(--muted);font-size:0.88em">${escHtml(r['Car_clean'] || r['Car'] || '—')}</td>
                     <td>${timeMarkup}</td>
-                    ${showCond ? `<td><span class="cond-badge cond-${(r['Condition']||'').toLowerCase()}">${r['Condition']||''}</span></td>` : ''}
-                    ${showDir  ? `<td style="color:var(--muted);font-size:0.8em;white-space:nowrap">${r['Direction']||''}</td>` : ''}
+                    ${showCond ? `<td class="lb-col-cond"><span class="cond-badge cond-${(r['Condition']||'').toLowerCase()}">${escHtml(r['Condition']||'')}</span></td>` : ''}
+                    ${showDir  ? `<td class="lb-col-dir" style="color:var(--muted);font-size:0.8em;white-space:nowrap">${escHtml(r['Direction']||'')}</td>` : ''}
                 </tr>`;
                 }).join('')}
             </tbody>
         </table>
+        ${_wrStripHtml}
         <div class="lb-footer-link">
             <a href="/courses/${activeTrack.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()}.html">
                 ${activeTrack.toUpperCase()} COURSE PAGE ↗
@@ -326,6 +363,23 @@ function filterAndRender() {
                 ALL-TIME WORLD RECORDS ↗
             </a>
         </div>`;
+
+    // Announce filter result to screen readers
+    const _lbAnn = document.getElementById('lb-announcement');
+    if (_lbAnn && activeTrack) {
+        const dirPart  = (activeDir  && activeDir  !== 'all') ? ` ${activeDir}`  : '';
+        const condPart = (activeCond && activeCond !== 'all') ? ` ${activeCond}` : '';
+        _lbAnn.textContent = `${records.length} record${records.length !== 1 ? 's' : ''} for ${activeTrack}${dirPart}${condPart}`;
+    }
+
+    // Sync URL to current filter state
+    if (activeTrack) {
+        const _fp = new URLSearchParams(window.location.search);
+        _fp.set('course', activeTrack);
+        if (activeDir  && activeDir  !== 'all') _fp.set('dir',  activeDir);  else _fp.delete('dir');
+        if (activeCond && activeCond !== 'all') _fp.set('cond', activeCond); else _fp.delete('cond');
+        history.replaceState(null, '', `?${_fp.toString()}`);
+    }
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -412,7 +466,7 @@ function getPlayerTARecords(playerName) {
     if (!records.length) return {};
 
     // Sort fastest first, then keep best time per car + track + dir + cond
-    records.sort((a, b) => (a['Time_ms'] || 9999999) - (b['Time_ms'] || 9999999));
+    records.sort((a, b) => timeToMs(a) - timeToMs(b));
     const seen = new Set();
     records = records.filter(r => {
         const car = r['Car_clean'] || r['Car'] || '';
@@ -585,10 +639,21 @@ const DIR_TO_ABBR = {
 //   "HT" must NOT match "night", "right", "eight", etc.
 // Terms that already contain non-alphanumeric characters (:v, CHON!, WHAT?, (.Y.))
 // are distinctive enough that simple inclusion is fine.
+// Parse a lap-time string like 2'44"581 (or Unicode variants) to milliseconds.
+// Used as a fallback when the sheet's Time_ms column is null/missing.
+function timeToMs(r) {
+    const ms = r['Time_ms'];
+    if (ms != null && ms > 0) return ms;
+    const s = normalizeQuotes(String(r['Time'] || ''));
+    const m = s.match(/^(\d+)'(\d+)["](\d+)$/);
+    return m ? (+m[1] * 60000 + +m[2] * 1000 + +m[3]) : 9999999;
+}
+
 function matchesPlayerTerm(title, term) {
     if (/^[a-z0-9]+$/i.test(term)) {
         const esc = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return new RegExp('(?<![a-z0-9])' + esc + '(?![a-z0-9])', 'i').test(title);
+        // Use capturing groups instead of lookbehind — Safari 16 and earlier don't support (?<!...)
+        return new RegExp('(^|[^a-z0-9])' + esc + '([^a-z0-9]|$)', 'i').test(title);
     }
     return title.toLowerCase().includes(term.toLowerCase());
 }
@@ -694,24 +759,42 @@ async function openRacerDetail(playerName) {
     const panel   = document.getElementById('racer-detail');
     const content = document.getElementById('racer-detail-content');
 
-    // Show panel with loading state immediately
-    panel.style.display = '';
-    content.innerHTML   = '<div class="loading">LOADING RACER DATA...</div>';
+    content.innerHTML = '<div class="loading">LOADING RACER DATA...</div>';
+    panel.classList.add('open');
+    document.body.style.overflow = 'hidden';
 
-    // Scroll to panel smoothly
-    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Preserve any existing course params when updating URL
+    const _openParams = new URLSearchParams(window.location.search);
+    _openParams.set('racer', playerName);
+    history.replaceState({ racer: playerName }, '', `?${_openParams.toString()}`);
 
     // Wait for both data sources in parallel — both are no-ops after first load
     // (loadDetailSheets and _leaderboardPromise cache their results).
-    await Promise.all([
-        loadDetailSheets(),
-        _leaderboardPromise,   // guarantees allRecords is populated before we render TA records
-    ]);
+    try {
+        await Promise.all([
+            loadDetailSheets(),
+            _leaderboardPromise,   // guarantees allRecords is populated before we render TA records
+        ]);
+    } catch {
+        // If data load fails entirely (all JSONP timeouts), show error rather than stuck spinner
+        if (activeRacerName !== playerName) return;
+        content.innerHTML = `
+            <div style="padding:2rem;font-family:var(--font-mono);color:var(--muted);text-align:center">
+                <p>FAILED TO LOAD DATA</p>
+                <button class="detail-close" id="detail-close" aria-label="Close racer detail"
+                        style="margin-top:1.5rem">CLOSE ✕</button>
+            </div>`;
+        document.getElementById('detail-close')?.addEventListener('click', closeRacerDetail);
+        document.getElementById('detail-close')?.focus();
+        return;
+    }
 
     // Guard against a second click overtaking this one
     if (activeRacerName !== playerName) return;
 
     renderRacerDetail(playerName, content);
+    // Move focus into modal for keyboard/screen reader users
+    document.getElementById('detail-close')?.focus();
 }
 
 function renderRacerDetail(playerName, container) {
@@ -885,17 +968,13 @@ function renderRacerDetail(playerName, container) {
                                       target="_blank" rel="noopener">${timeStr} ↗</a>`
                                 : `<span class="time-cell">${timeStr}</span>`;
                             const courseLink = r['Map']
-                                ? `<a href="/courses/${playerSlug(r['Map'])}.html"
-                                      style="color:var(--text);text-decoration:none;border-bottom:1px solid rgba(255,255,255,0.15)"
-                                      onmouseover="this.style.color='var(--orange)';this.style.borderBottomColor='var(--orange)'"
-                                      onmouseout="this.style.color='var(--text)';this.style.borderBottomColor='rgba(255,255,255,0.15)'"
-                                      >${r['Map']}</a>`
+                                ? `<a href="/courses/${playerSlug(r['Map'])}.html" class="ta-course-link">${escHtml(r['Map'])}</a>`
                                 : '—';
                             return `
                         <tr>
                             <td>${courseLink}</td>
-                            <td style="color:var(--muted);font-size:0.8em;white-space:nowrap">${r['Direction'] ?? '—'}</td>
-                            <td><span class="cond-badge cond-${String(r['Condition']||'').toLowerCase()}">${r['Condition'] ?? ''}</span></td>
+                            <td style="color:var(--muted);font-size:0.8em;white-space:nowrap">${escHtml(r['Direction'] ?? '—')}</td>
+                            <td><span class="cond-badge cond-${String(r['Condition']||'').toLowerCase()}">${escHtml(r['Condition'] ?? '')}</span></td>
                             <td>${timeCell}</td>
                         </tr>`;
                         }).join('')}`;
@@ -932,7 +1011,7 @@ function renderRacerDetail(playerName, container) {
                     <a class="video-card" href="https://youtube.com/watch?v=${v.id}"
                        target="_blank" rel="noopener">
                         <div class="video-thumb">
-                            <img src="${thumb}" alt="${v.title}" loading="lazy">
+                            <img src="${thumb}" alt="${escHtml(v.title)}" loading="lazy">
                         </div>
                         <div class="video-info">
                             <div class="video-title">${v.title}</div>
@@ -962,9 +1041,18 @@ function renderRacerDetail(playerName, container) {
 }
 
 function closeRacerDetail() {
-    document.getElementById('racer-detail').style.display = 'none';
+    document.getElementById('racer-detail').classList.remove('open');
+    document.body.style.overflow = '';
+    // Return focus to the card that triggered the modal (before clearing activeRacerName)
+    if (activeRacerName) {
+        document.querySelector(`.racer-card[data-player="${CSS.escape(activeRacerName)}"]`)?.focus();
+    }
     document.querySelectorAll('.racer-card').forEach(c => c.classList.remove('active'));
     activeRacerName = null;
+    const _closeParams = new URLSearchParams(window.location.search);
+    _closeParams.delete('racer');
+    const _closeQs = _closeParams.toString();
+    history.replaceState(null, '', _closeQs ? `?${_closeQs}` : window.location.pathname);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -1104,9 +1192,8 @@ async function initBattleLeaderboard() {
                             const name      = String(val ?? '');
                             const isKnown   = RACERS.some(rc => rc.name === name);
                             const inner     = isKnown
-                                ? `<button class="battle-player-link"
-                                          onclick="openRacerDetail('${name}')">${name}</button>`
-                                : `<strong>${name || '—'}</strong>`;
+                                ? `<button class="battle-player-link" data-racer="${escHtml(name)}">${escHtml(name)}</button>`
+                                : `<strong>${escHtml(name) || '—'}</strong>`;
                             return `<td>${inner}</td>`;
                         }
 
@@ -1115,6 +1202,10 @@ async function initBattleLeaderboard() {
                 </tr>`).join('')}
             </tbody>
         </table>`;
+
+    container.querySelectorAll('.battle-player-link[data-racer]').forEach(btn => {
+        btn.addEventListener('click', () => openRacerDetail(btn.dataset.racer));
+    });
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -1159,10 +1250,10 @@ async function initVideos() {
         <a class="video-card" href="https://youtube.com/watch?v=${v.id}" target="_blank" rel="noopener">
             <div class="video-thumb">
                 <img src="${v.thumbnail || `https://img.youtube.com/vi/${v.id}/mqdefault.jpg`}"
-                     alt="${v.title}" loading="lazy">
+                     alt="${escHtml(v.title)}" loading="lazy">
             </div>
             <div class="video-info">
-                <div class="video-title">${v.title}</div>
+                <div class="video-title">${escHtml(v.title)}</div>
                 ${v.date
                     ? `<div class="video-date" style="margin-top:0.4rem">
                            ${new Date(v.date).toLocaleDateString('en-US',
@@ -1209,6 +1300,13 @@ function updateHeroStats(updates = {}) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Capture URL params before any init overwrites them
+    const _urlParams   = new URLSearchParams(window.location.search);
+    const _paramRacer  = _urlParams.get('racer');
+    const _paramCourse = _urlParams.get('course');
+    const _paramDir    = _urlParams.get('dir');
+    const _paramCond   = _urlParams.get('cond');
+
     initNav();
     initRacers();           // synchronous — renders cards immediately from RACERS array
     initVideos();           // async — fetches YouTube videos
@@ -1221,6 +1319,43 @@ document.addEventListener('DOMContentLoaded', () => {
     // Close racer detail on Escape
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape' && activeRacerName) closeRacerDetail();
+    });
+
+    // Close modal on backdrop click (click on overlay but not the modal content itself)
+    document.getElementById('racer-detail').addEventListener('click', e => {
+        if (e.target === e.currentTarget) closeRacerDetail();
+    });
+
+    // Apply URL params after leaderboard data is ready
+    _leaderboardPromise.then(() => {
+        if (_paramCourse && COURSE_ORDER.includes(_paramCourse)) {
+            showTrack(_paramCourse);
+            // Sync course tab active state (showTrack already called filterAndRender for default dir/cond)
+            document.querySelectorAll('#track-tabs .track-tab').forEach(t => {
+                t.classList.toggle('active', t.dataset.track === _paramCourse);
+            });
+            // Override dir/cond if specified in URL
+            let needsRerender = false;
+            if (_paramDir) {
+                activeDir = _paramDir;
+                document.querySelectorAll('#direction-tabs .sub-tab').forEach(b => {
+                    b.classList.toggle('active', b.dataset.val === _paramDir);
+                });
+                buildConditionTabs(_paramCourse, _paramDir);
+                needsRerender = true;
+            }
+            if (_paramCond) {
+                activeCond = _paramCond;
+                document.querySelectorAll('#condition-tabs .sub-tab').forEach(b => {
+                    b.classList.toggle('active', b.dataset.val === _paramCond);
+                });
+                needsRerender = true;
+            }
+            if (needsRerender) filterAndRender();
+        }
+        if (_paramRacer && RACERS.some(r => r.name === _paramRacer)) {
+            openRacerDetail(_paramRacer);
+        }
     });
 
     // ── Outbound link tracking ─────────────────────────────

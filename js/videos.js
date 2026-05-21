@@ -7,6 +7,12 @@ function trackEvent(name, params = {}) {
     if (typeof gtag === 'function') gtag('event', name, params);
 }
 
+function escHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = String(s ?? '');
+    return d.innerHTML;
+}
+
 const SHEET_ID        = '1MaofC1e4XlJ3XtKAokq34Q3q5vTziuz8NNPS7tHZD3E';
 const BATTLE_LOG_GID  = '1322076132';
 
@@ -41,14 +47,22 @@ let activeSort     = 'newest';
 function fetchSheetData(gid) {
     return new Promise((resolve) => {
         const cb = '_gviz_' + Math.random().toString(36).slice(2);
+        const cleanup = () => { delete window[cb]; document.getElementById(cb)?.remove(); };
+
+        const timer = setTimeout(() => {
+            cleanup();
+            console.error('Sheet fetch timed out for gid=' + gid);
+            resolve([]);
+        }, 10000);
+
         window[cb] = (response) => {
-            delete window[cb];
-            document.getElementById(cb)?.remove();
+            clearTimeout(timer);
+            cleanup();
             resolve(response?.table ? parseTable(response.table) : []);
         };
         const script    = document.createElement('script');
         script.id       = cb;
-        script.onerror  = () => { delete window[cb]; script.remove(); resolve([]); };
+        script.onerror  = () => { clearTimeout(timer); cleanup(); resolve([]); };
         script.src      = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq` +
                           `?tqx=out:json;responseHandler:${cb}&gid=${gid}`;
         document.head.appendChild(script);
@@ -327,11 +341,11 @@ function videoCardHTML(v) {
         <a class="video-card" href="https://youtube.com/watch?v=${v.id}"
            target="_blank" rel="noopener">
             <div class="video-thumb">
-                <img src="${thumb}" alt="${v.title}" loading="lazy">
+                <img src="${thumb}" alt="${escHtml(v.title)}" loading="lazy">
                 ${catBadge}
             </div>
             <div class="video-info">
-                <div class="video-title">${v.title}</div>
+                <div class="video-title">${escHtml(v.title)}</div>
                 <div class="video-meta">
                     ${dateStr ? `<span class="video-date">${dateStr}</span>` : ''}
                     ${coursePill}
