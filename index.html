@@ -56,7 +56,7 @@
             <li><a href="#battles">BATTLES</a></li>
             <li><a href="#racers">RACERS</a></li>
             <li><a href="#about">ABOUT</a></li>
-            <li><a href="https://www.youtube.com/@InitialDSanFrancisco" target="_blank" rel="noopener" style="color:var(--orange)">YOUTUBE ↗</a></li>
+            <li><a href="https://www.youtube.com/@InitialDSanFrancisco" target="_blank" rel="noopener" class="nav-external">YOUTUBE ↗</a></li>
         </ul>
         <button class="nav-toggle" id="nav-toggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
     </nav>
@@ -69,7 +69,8 @@
                 Initial D<br>
                 <span class="accent-orange">San Francisco</span>
             </h1>
-            <p class="hero-sub">Initial D Arcade Stage 3</p>
+            <p class="hero-sub">Arcade Stage Version 3</p>
+            <p class="hero-tagline">A Bay Area crew running time attacks and ranked battles.</p>
             <a href="https://www.youtube.com/@InitialDSanFrancisco" target="_blank" rel="noopener" class="btn-primary">
                 WATCH ON YOUTUBE
             </a>
@@ -164,11 +165,6 @@
         <div class="racer-grid" id="racer-grid"></div>
     </section>
 
-    <!-- ── RACER DETAIL MODAL ───────────────── -->
-    <div id="racer-detail" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Racer profile" aria-live="polite">
-        <div class="modal" id="racer-detail-content"></div>
-    </div>
-
     <!-- ── ABOUT ─────────────────────────────── -->
     <div class="dark-band">
         <section id="about" class="section">
@@ -207,6 +203,12 @@
         <img src="Initial D San Francisco logo.png" alt="Initial D San Francisco" class="footer-logo-img" loading="lazy" width="1920" height="1080">
         <p>San Francisco, CA &nbsp;·&nbsp; Initial D Arcade Stage V3 &nbsp;·&nbsp; <a href="https://www.youtube.com/@InitialDSanFrancisco" target="_blank" rel="noopener" style="color:var(--orange);text-decoration:none">YouTube ↗</a></p>
     </footer>
+
+    <!-- ── RACER DETAIL MODAL ───────────────── -->
+    <div id="racer-backdrop"></div>
+    <div id="racer-detail" class="racer-detail-band" style="display:none" aria-modal="true" aria-live="polite">
+        <div class="racer-detail-inner" id="racer-detail-content"></div>
+    </div>
 
     <script src="data/videos.js"></script>
     <script src="js/youtube.js"></script>

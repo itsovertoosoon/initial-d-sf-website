@@ -756,12 +756,15 @@ async function openRacerDetail(playerName) {
     document.querySelector(`.racer-card[data-player="${CSS.escape(playerName)}"]`)
             ?.classList.add('active');
 
-    const panel   = document.getElementById('racer-detail');
-    const content = document.getElementById('racer-detail-content');
+    const panel    = document.getElementById('racer-detail');
+    const backdrop = document.getElementById('racer-backdrop');
+    const content  = document.getElementById('racer-detail-content');
 
+    // Show modal with loading state
+    panel.style.display = '';
+    backdrop.classList.add('active');
+    document.body.classList.add('modal-open');
     content.innerHTML = '<div class="loading">LOADING RACER DATA...</div>';
-    panel.classList.add('open');
-    document.body.style.overflow = 'hidden';
 
     // Preserve any existing course params when updating URL
     const _openParams = new URLSearchParams(window.location.search);
@@ -1041,8 +1044,9 @@ function renderRacerDetail(playerName, container) {
 }
 
 function closeRacerDetail() {
-    document.getElementById('racer-detail').classList.remove('open');
-    document.body.style.overflow = '';
+    document.getElementById('racer-detail').style.display = 'none';
+    document.getElementById('racer-backdrop').classList.remove('active');
+    document.body.classList.remove('modal-open');
     // Return focus to the card that triggered the modal (before clearing activeRacerName)
     if (activeRacerName) {
         document.querySelector(`.racer-card[data-player="${CSS.escape(activeRacerName)}"]`)?.focus();
@@ -1316,10 +1320,38 @@ document.addEventListener('DOMContentLoaded', () => {
     // Hero stats — static values available immediately
     updateHeroStats({ racers: RACERS.length, courses: COURSE_ORDER.length });
 
-    // Close racer detail on Escape
+    // Close racer detail on Escape or backdrop click
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape' && activeRacerName) closeRacerDetail();
     });
+    document.getElementById('racer-backdrop')?.addEventListener('click', () => {
+        if (activeRacerName) closeRacerDetail();
+    });
+
+    // ── Scroll-spy: highlight nav link for current section ─
+    (function() {
+        const ids   = ['home','videos','records','battles','racers','about'];
+        const links = {};
+        ids.forEach(id => {
+            const a = document.querySelector(`.nav-links a[href="#${id}"]`);
+            if (a) links[id] = a;
+        });
+        let active = 'home';
+        links.home?.classList.add('nav-active');
+        window.addEventListener('scroll', () => {
+            const mark = window.innerHeight * 0.4;
+            let next = 'home';
+            for (const id of ids) {
+                const el = document.getElementById(id);
+                if (el && el.getBoundingClientRect().top <= mark) next = id;
+            }
+            if (next !== active) {
+                links[active]?.classList.remove('nav-active');
+                links[next]?.classList.add('nav-active');
+                active = next;
+            }
+        }, { passive: true });
+    })();
 
     // Close modal on backdrop click (click on overlay but not the modal content itself)
     document.getElementById('racer-detail').addEventListener('click', e => {

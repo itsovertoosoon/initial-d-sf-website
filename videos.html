@@ -55,7 +55,7 @@
             <li><a href="index.html#battles">BATTLES</a></li>
             <li><a href="index.html#racers">RACERS</a></li>
             <li><a href="index.html#about">ABOUT</a></li>
-            <li><a href="https://www.youtube.com/@InitialDSanFrancisco" target="_blank" rel="noopener" style="color:var(--orange)">YOUTUBE ↗</a></li>
+            <li><a href="https://www.youtube.com/@InitialDSanFrancisco" target="_blank" rel="noopener" class="nav-external">YOUTUBE ↗</a></li>
         </ul>
         <button class="nav-toggle" id="nav-toggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
     </nav>
@@ -71,18 +71,22 @@
     <!-- ── CONTROLS + GRID ────────────────────────────── -->
     <section class="section">
 
-        <!-- Row 1: Category tabs -->
-        <div class="track-tabs" id="category-tabs"></div>
-
-        <!-- Row 2: Course + Player secondary filters (contextual) -->
-        <div class="secondary-filters" id="video-secondary-filters" style="display:none">
-            <div class="sub-filter-row" id="video-course-row">
-                <span class="sub-filter-label">COURSE</span>
-                <div class="sub-tabs" id="video-course-tabs"></div>
-            </div>
-            <div class="sub-filter-row" id="video-player-row">
-                <span class="sub-filter-label">PLAYER</span>
-                <div class="sub-tabs" id="video-player-tabs"></div>
+        <!-- Filter bar: category tabs + course/player dropdowns in one row -->
+        <div class="filter-bar">
+            <div class="track-tabs" id="category-tabs"></div>
+            <div class="filter-dropdowns" id="filter-dropdowns" style="display:none">
+                <div class="filter-dropdown-group" id="course-dropdown-group">
+                    <label class="sub-filter-label" for="course-select">COURSE</label>
+                    <select id="course-select" class="filter-select">
+                        <option value="all">ALL COURSES</option>
+                    </select>
+                </div>
+                <div class="filter-dropdown-group" id="player-dropdown-group">
+                    <label class="sub-filter-label" for="player-select">PLAYER</label>
+                    <select id="player-select" class="filter-select">
+                        <option value="all">ALL PLAYERS</option>
+                    </select>
+                </div>
             </div>
         </div>
 

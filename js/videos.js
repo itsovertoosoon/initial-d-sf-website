@@ -224,28 +224,26 @@ function buildCategoryTabs() {
    UI — SECONDARY FILTERS (course + player, contextual)
    ══════════════════════════════════════════════════════════ */
 function buildSecondaryFilters() {
-    const section    = document.getElementById('video-secondary-filters');
-    const courseRow  = document.getElementById('video-course-row');
-    const courseTabs = document.getElementById('video-course-tabs');
-    const playerRow  = document.getElementById('video-player-row');
-    const playerTabs = document.getElementById('video-player-tabs');
+    const dropdowns    = document.getElementById('filter-dropdowns');
+    const courseGroup  = document.getElementById('course-dropdown-group');
+    const playerGroup  = document.getElementById('player-dropdown-group');
+    const courseSelect = document.getElementById('course-select');
+    const playerSelect = document.getElementById('player-select');
 
-    // Course filter — all categories (attack, battle, lots, all)
+    // Course options — scoped to active category
     const courseSubset = allVideos.filter(v =>
         (activeCategory === 'all' || v.category === activeCategory) && v.course
     );
-    const courses   = [...new Set(courseSubset.map(v => v.course))].sort();
+    const courses    = [...new Set(courseSubset.map(v => v.course))].sort();
     const showCourse = courses.length > 0;
-    courseRow.style.display = showCourse ? '' : 'none';
+    courseGroup.style.display = showCourse ? '' : 'none';
     if (showCourse) {
-        courseTabs.innerHTML = ['all', ...courses].map(c =>
-            `<button class="sub-tab${c === activeCourse ? ' active' : ''}" data-val="${c}">
-                ${c === 'all' ? 'ALL' : c.toUpperCase()}
-             </button>`
+        courseSelect.innerHTML = ['all', ...courses].map(c =>
+            `<option value="${c}"${c === activeCourse ? ' selected' : ''}>${c === 'all' ? 'ALL COURSES' : c}</option>`
         ).join('');
     }
 
-    // Player filter — always shown, scoped to current category + course
+    // Player options — scoped to active category + course
     const playerSubset = allVideos.filter(v =>
         (activeCategory === 'all' || v.category === activeCategory) &&
         (activeCourse   === 'all' || v.course   === activeCourse)   &&
@@ -253,37 +251,27 @@ function buildSecondaryFilters() {
     );
     const players    = [...new Set(playerSubset.flatMap(v => v.players))].sort();
     const showPlayer = players.length > 0;
-    playerRow.style.display = showPlayer ? '' : 'none';
+    playerGroup.style.display = showPlayer ? '' : 'none';
     if (showPlayer) {
-        playerTabs.innerHTML = ['all', ...players].map(p =>
-            `<button class="sub-tab${p === activePlayer ? ' active' : ''}" data-val="${p}">
-                ${p === 'all' ? 'ALL' : p.toUpperCase()}
-             </button>`
+        playerSelect.innerHTML = ['all', ...players].map(p =>
+            `<option value="${p}"${p === activePlayer ? ' selected' : ''}>${p === 'all' ? 'ALL PLAYERS' : p}</option>`
         ).join('');
     }
 
-    section.style.display = (showCourse || showPlayer) ? '' : 'none';
+    dropdowns.style.display = (showCourse || showPlayer) ? '' : 'none';
 }
 
-// Wire secondary filter clicks once (event delegation on static elements)
+// Wire dropdown change events once
 function wireSecondaryFilters() {
-    document.getElementById('video-course-tabs').addEventListener('click', e => {
-        const btn = e.target.closest('.sub-tab');
-        if (!btn) return;
-        activeCourse = btn.dataset.val;
+    document.getElementById('course-select').addEventListener('change', e => {
+        activeCourse = e.target.value;
         activePlayer = 'all';
-        document.querySelectorAll('#video-course-tabs .sub-tab').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
         buildSecondaryFilters(); // refresh player list for new course
         renderGrid();
     });
 
-    document.getElementById('video-player-tabs').addEventListener('click', e => {
-        const btn = e.target.closest('.sub-tab');
-        if (!btn) return;
-        activePlayer = btn.dataset.val;
-        document.querySelectorAll('#video-player-tabs .sub-tab').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
+    document.getElementById('player-select').addEventListener('change', e => {
+        activePlayer = e.target.value;
         renderGrid();
     });
 }
@@ -296,13 +284,7 @@ function renderGrid() {
     const grid   = document.getElementById('video-grid');
     const count  = document.getElementById('result-count');
 
-    const catVideos = activeCategory === 'all'
-        ? allVideos.filter(v => v.category !== 'other')
-        : allVideos.filter(v => v.category === activeCategory);
-
-    count.textContent = activeCourse === 'all' && activePlayer === 'all'
-        ? `${videos.length} video${videos.length !== 1 ? 's' : ''}`
-        : `${videos.length} of ${catVideos.length}`;
+    count.textContent = `${videos.length} video${videos.length !== 1 ? 's' : ''}`;
 
     if (!videos.length) {
         grid.innerHTML = `
@@ -323,7 +305,7 @@ function videoCardHTML(v) {
         ? new Date(v.date).toLocaleDateString('en-US', {year:'numeric', month:'short', day:'numeric'})
         : '';
 
-    const catLabel = { attack: 'TIME ATTACK', battle: 'BATTLE', lots: 'LOTS' }[v.category] || '';
+    const catLabel = { attack: 'TIME ATTACK', battle: 'BATTLE', lots: 'LEGEND' }[v.category] || '';
     const catBadge = catLabel
         ? `<span class="vid-cat-badge cat-${v.category}">${catLabel}</span>` : '';
 

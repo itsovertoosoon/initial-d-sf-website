@@ -271,9 +271,18 @@ a.nav-logo {
 .hero-sub {
     font-size: 1.1rem;
     color: var(--muted);
+    margin-bottom: 0.5rem;
+    max-width: 480px;
+    line-height: 1.7;
+}
+.hero-tagline {
+    font-size: 0.88rem;
+    color: var(--muted);
     margin-bottom: 2.2rem;
     max-width: 480px;
     line-height: 1.7;
+    font-family: var(--font-ui);
+    letter-spacing: 0.04em;
 }
 
 /* ── Buttons ──────────────────────────────────────────────── */
@@ -911,6 +920,51 @@ a.time-link:hover {
 }
 
 /* ════════════════════════════════════════════════════════════
+   VIDEO FILTER BAR (videos.html — category tabs + dropdowns)
+   ════════════════════════════════════════════════════════════ */
+.filter-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+    margin-bottom: 1rem;
+}
+.filter-dropdowns {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+    margin-left: auto;
+}
+.filter-dropdown-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.filter-select {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    padding: 0.28rem 1.6rem 0.28rem 0.6rem;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2377778a'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    transition: border-color 0.15s, color 0.15s;
+}
+.filter-select:hover { border-color: var(--muted); }
+.filter-select:focus {
+    outline: none;
+    border-color: var(--orange);
+    color: var(--text);
+}
+
+/* ════════════════════════════════════════════════════════════
    NAV — active link (used on videos.html)
    ════════════════════════════════════════════════════════════ */
 /* Make the nav-logo a link when it needs to be */
@@ -919,6 +973,8 @@ a.nav-logo {
     color: var(--text);
 }
 .nav-active { color: var(--orange) !important; }
+.nav-links .nav-external { border-bottom: 1px solid rgba(119,119,138,0.4); }
+.nav-links .nav-external:hover { border-bottom-color: var(--orange); }
 
 /* ════════════════════════════════════════════════════════════
    PAGE HERO — used on inner pages (videos.html etc.)
@@ -1083,8 +1139,8 @@ a.nav-logo {
     font-family: var(--font-mono);
     font-size: 0.62rem;
     letter-spacing: 0.1em;
-    color: var(--orange);
-    border: 1px solid rgba(255,106,0,0.35);
+    color: var(--muted);
+    border: 1px solid rgba(119,119,138,0.4);
     padding: 0.05rem 0.35rem;
 }
 
@@ -1171,23 +1227,39 @@ a.nav-logo {
 .racer-card.active .racer-avatar-placeholder { border-color: var(--orange); }
 
 /* ════════════════════════════════════════════════════════════
-   RACER DETAIL PANEL (inline, below the racer grid)
+   RACER DETAIL — MODAL OVERLAY
    ════════════════════════════════════════════════════════════ */
+body.modal-open { overflow: hidden; }
+
+#racer-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.78);
+    z-index: 900;
+}
+#racer-backdrop.active { display: block; }
+
 .racer-detail-band {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(960px, 95vw);
+    max-height: 90vh;
+    overflow-y: auto;
+    z-index: 901;
     background: var(--surface);
     border-top: 3px solid var(--orange);
-    border-bottom: 1px solid var(--border);
-    box-shadow: 0 -6px 32px rgba(255,106,0,0.1);
+    box-shadow: 0 0 80px rgba(0,0,0,0.9), 0 0 40px rgba(255,106,0,0.12);
     animation: detailSlideIn 0.22s ease;
 }
 @keyframes detailSlideIn {
-    from { opacity: 0; transform: translateY(-10px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; transform: translate(-50%, calc(-50% - 16px)); }
+    to   { opacity: 1; transform: translate(-50%, -50%); }
 }
 
 .racer-detail-inner {
-    max-width: 1200px;
-    margin: 0 auto;
     padding: 2.5rem 2rem 3.5rem;
 }
 
@@ -1299,10 +1371,10 @@ a.nav-logo {
 }
 .detail-close:hover { color: var(--orange); border-color: var(--orange); }
 
-/* ── Two-column layout for battle stats + head-to-head ── */
+/* ── Battle stats stacked vertically (modal width doesn't suit side-by-side) ── */
 .detail-two-col {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: 2rem;
     margin-bottom: 2.5rem;
 }
@@ -1458,6 +1530,17 @@ a.nav-logo {
     .detail-avatar-placeholder { width: 72px; height: 72px; font-size: 2rem; }
     .racer-detail-inner { padding: 1.75rem 1.25rem 2.5rem; }
     .detail-player-info { gap: 1rem; }
+    .racer-detail-band {
+        top: 0; left: 0;
+        transform: none;
+        width: 100vw;
+        max-height: 100vh;
+        max-height: 100dvh;
+    }
+    @keyframes detailSlideIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
 }
 
 /* ── World record strip ──────────────────────────────────── */
