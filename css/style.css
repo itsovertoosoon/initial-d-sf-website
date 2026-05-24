@@ -973,8 +973,8 @@ a.nav-logo {
     color: var(--text);
 }
 .nav-active { color: var(--orange) !important; }
-.nav-links .nav-external { border-bottom: 1px solid rgba(119,119,138,0.4); }
-.nav-links .nav-external:hover { border-bottom-color: var(--orange); }
+.nav-external { border-bottom: 1px solid rgba(119,119,138,0.4); }
+.nav-external:hover { border-bottom-color: var(--orange); }
 
 /* ════════════════════════════════════════════════════════════
    PAGE HERO — used on inner pages (videos.html etc.)

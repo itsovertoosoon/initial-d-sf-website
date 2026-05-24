@@ -86,6 +86,15 @@
   .car-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px; margin-top: 12px; }
   .car-entry { font-size: 11px; color: var(--text-dim); }
   .car-entry span { color: var(--accent-yellow); }
+
+  .format-toggle { display: flex; align-items: center; gap: 8px; padding: 10px 0 18px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+  .format-toggle span { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .toggle-group { display: flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .toggle-group label { display: flex; align-items: center; padding: 6px 14px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; color: var(--text-dim); background: transparent; border: none; margin: 0; white-space: nowrap; }
+  .toggle-group input[type="radio"] { display: none; }
+  .toggle-group input[type="radio"]:checked + span { color: var(--accent); }
+  .toggle-group label:has(input:checked) { background: var(--surface); color: var(--accent); }
+  .toggle-group label + label { border-left: 1px solid var(--border); }
 </style>
 </head>
 <body>
@@ -98,6 +107,14 @@
   <div class="tabs">
     <button class="tab active" data-tab="ta">Time Attack</button>
     <button class="tab" data-tab="battle">Battle</button>
+  </div>
+
+  <div class="format-toggle">
+    <span>Title format:</span>
+    <div class="toggle-group">
+      <label><input type="radio" name="fmt" value="general" checked><span>General</span></label>
+      <label><input type="radio" name="fmt" value="seo"><span>SEO Optimized</span></label>
+    </div>
   </div>
 
   <!-- ============== TIME ATTACK ============== -->
@@ -575,8 +592,8 @@ async function lookupStats() {
       'ok'
     );
   } catch (e) {
-    setLookupStatus('Fetch error — check sheet is published', 'err');
-    console.error(e);
+    setLookupStatus('Error: ' + (e && e.message ? e.message : String(e)), 'err');
+    console.error('lookupStats error:', e);
   }
 
   btn.disabled = false;
@@ -629,6 +646,11 @@ function carFull(abbrev) {
 }
 function sval(id) { return document.getElementById(id).value.trim(); }
 
+// ── Format toggle helper ─────────────────────────────────────────────────
+function fmtMode() {
+  return document.querySelector('input[name="fmt"]:checked').value;
+}
+
 // ── Time Attack generation ───────────────────────────────────────────────
 function generateTA() {
   const stage = sval('ta-stage'), dir = sval('ta-direction'),
@@ -640,7 +662,9 @@ function generateTA() {
   const titleCar = carTitle(carAbbrev);
   const fullCar  = carFull(carAbbrev);
 
-  const title = `Initial D Arcade Stage Ver.3 — Time Attack ${handle} ${titleCar} ${stage} ${dir} ${cond} ${time}`;
+  const title = fmtMode() === 'seo'
+    ? `${handle} (${titleCar}) — ${stage} ${dir} ${cond} ${time} | Initial D Arcade Stage Ver.3`
+    : `Initial D Arcade Stage Ver.3 — Time Attack ${handle} ${titleCar} ${stage} ${dir} ${cond} ${time}`;
   const desc  = `Initial D Arcade Stage Ver.3 Time Attack
 
 Driver: ${handle}
@@ -679,7 +703,9 @@ function generateBattle() {
   const bOW = numVal('pb-ow'), bOL = numVal('pb-ol');
   const bHW = numVal('pb-hw'), bHL = numVal('pb-hl');
 
-  const title = `Initial D Arcade Stage Ver.3 — Battle: ${stage}/${dir} — ${aH} (${aTitleCar}) vs ${bH} (${bTitleCar})`;
+  const title = fmtMode() === 'seo'
+    ? `${aH} (${aTitleCar}) vs ${bH} (${bTitleCar}) — ${stage} ${dir} ${cond} | Initial D Arcade Stage Ver.3`
+    : `Initial D Arcade Stage Ver.3 — Battle: ${stage}/${dir} — ${aH} (${aTitleCar}) vs ${bH} (${bTitleCar})`;
 
   const desc = `Initial D Arcade Stage Ver.3 Battle
 
