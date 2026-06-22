@@ -126,7 +126,7 @@ Use the `trackEvent(name, params)` helper (safe no-op if gtag not loaded).
 - **H-T** is HT's old card tag. Some TA rows may still show H-T as `Player Tag` — these are correctly matched to HT via `normalizeName()`.
 
 ## TA-only players (no battle history)
-JINRO, SHI, and :v have time attack records but do not appear in any battle sheet. This is expected — they've recorded times but haven't played ranked battles.
+JINRO and SHI have time attack records but do not appear in any battle sheet. This is expected — they've recorded times but haven't played ranked battles.
 
 ## Static page generation (build.js)
 
