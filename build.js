@@ -109,8 +109,12 @@ function parseTable(table) {
 }
 
 /* ── Fetch YouTube videos ────────────────────────────────────────────────── */
+// The API key is HTTP-referrer-restricted to the site's domain, so build-time
+// (server-side) requests must send the site as Referer or Google rejects them.
+const YT_FETCH_OPTS = { headers: { Referer: `${SITE_URL}/` } };
+
 async function fetchYouTubeVideos(apiKey, channelId) {
-    const chRes  = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=contentDetails&id=${channelId}&key=${apiKey}`);
+    const chRes  = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=contentDetails&id=${channelId}&key=${apiKey}`, YT_FETCH_OPTS);
     const chData = await chRes.json();
     if (chData.error) throw new Error(`YouTube: ${chData.error.message}`);
     if (!chData.items?.length) throw new Error('YouTube: channel not found or no uploads playlist');
@@ -118,7 +122,7 @@ async function fetchYouTubeVideos(apiKey, channelId) {
     let videos = [], pageToken = '';
     do {
         const url  = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsId}&maxResults=50${pageToken ? `&pageToken=${pageToken}` : ''}&key=${apiKey}`;
-        const res  = await fetch(url);
+        const res  = await fetch(url, YT_FETCH_OPTS);
         const data = await res.json();
         if (data.error) throw new Error(`YouTube: ${data.error.message}`);
         videos    = videos.concat((data.items || []).map(item => ({
@@ -222,13 +226,14 @@ function fmtPct(val) {
     return String(val);
 }
 function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-// Parse a lap-time string like 2'44"581 to milliseconds; fallback when Time_ms is null.
+// Milliseconds for sorting a record — displayed Time string first (mirrors
+// main.js timeToMs; the sheet's Time_ms column has had stale values).
 function timeToMs(r) {
-    const ms = r['Time_ms'];
-    if (ms != null && ms > 0) return ms;
     const s = String(r['Time'] || '').replace(/[''ʼ′]/g, "'").replace(/[""″]/g, '"');
     const m = s.match(/^(\d+)'(\d+)["](\d+)$/);
-    return m ? (+m[1] * 60000 + +m[2] * 1000 + +m[3]) : 9999999;
+    if (m) return +m[1] * 60000 + +m[2] * 1000 + +m[3];
+    const ms = r['Time_ms'];
+    return (ms != null && ms > 0) ? ms : 9999999;
 }
 function injectMarker(html, markerName, content) {
     const start = `<!-- PRERENDER:${markerName} -->`;
@@ -489,8 +494,9 @@ function generateRacerPage(racer, taByCar, battle, h2h, standing) {
 
         function matchesPlayer(title) {
             if (isAlphanumeric) {
-                // Safe to interpolate directly — isAlphanumeric guarantees no regex special chars
-                return new RegExp('(?<![a-z0-9])' + PLAYER_NAME + '(?![a-z0-9])', 'i').test(title);
+                // Safe to interpolate directly — isAlphanumeric guarantees no regex special chars.
+                // Capturing groups instead of lookbehind — Safari 16 and earlier don't support (?<!...)
+                return new RegExp('(^|[^a-z0-9])' + PLAYER_NAME + '([^a-z0-9]|$)', 'i').test(title);
             }
             return title.toLowerCase().indexOf(PLAYER_NAME.toLowerCase()) !== -1;
         }
@@ -729,7 +735,10 @@ function generateCoursesIndex(taRecords, battleLog) {
 }
 
 /* ── Generate one course page ────────────────────────────────────────────── */
-function generateCoursePage(courseName, taRecords, battleLog, battleStats) {
+function generateCoursePage(courseName, taRecords, battleLog, battleStats, racers) {
+    // Canonical roster names by normalised form — guests (CAL, MJ, KAY, …) have
+    // no racer page, so their names must render as plain text, not dead links.
+    const racerByNorm = new Map((racers || []).map(r => [norm(r.name), r.name]));
     const courseSlug_ = slug(courseName);
     const imgFile     = COURSE_IMAGES[courseName];
     const imgSrc      = imgFile ? `../${imgFile}` : null;
@@ -737,7 +746,7 @@ function generateCoursePage(courseName, taRecords, battleLog, battleStats) {
 
     // ── TA records: dedup best per player+car+dir+cond ──
     let courseTA = taRecords.filter(r => r['Map'] === courseName);
-    courseTA.sort((a, b) => (a['Time_ms'] || 9999999) - (b['Time_ms'] || 9999999));
+    courseTA.sort((a, b) => timeToMs(a) - timeToMs(b));
     const seen = new Set();
     courseTA = courseTA.filter(r => {
         const player = r['Identity'] || r['Player Tag'] || r['Tag_clean'] || '';
@@ -823,11 +832,14 @@ function generateCoursePage(courseName, taRecords, battleLog, battleStats) {
                         <thead><tr><th>RANK</th><th>PLAYER</th><th>CAR</th><th>TIME</th></tr></thead>
                         <tbody>
                         ${records.map((r, i) => {
-                            const identity = r['Identity'] || r['Player Tag'] || r['Tag_clean'] || '—';
-                            const pSlug    = slug(identity);
+                            const identity  = r['Identity'] || r['Player Tag'] || r['Tag_clean'] || '—';
+                            const canonical = racerByNorm.get(norm(identity));
+                            const playerCell = canonical
+                                ? `<a href="../racers/${slug(canonical)}.html" class="cp-player-link"><strong>${esc(identity)}</strong></a>`
+                                : `<strong>${esc(identity)}</strong>`;
                             return `<tr>
                                 <td><span class="rank-badge rank-${i + 1}">${i + 1}</span></td>
-                                <td><a href="../racers/${pSlug}.html" class="cp-player-link"><strong>${esc(identity)}</strong></a></td>
+                                <td>${playerCell}</td>
                                 <td style="color:var(--muted);font-size:0.88em">${esc(r['Car_clean'] || r['Car'] || '—')}</td>
                                 <td><span class="time-cell">${esc(r['Time'] || '—')}</span></td>
                             </tr>`;
@@ -852,7 +864,9 @@ function generateCoursePage(courseName, taRecords, battleLog, battleStats) {
             <tbody>
             ${courseStandings.map((r, i) => `<tr>
                 <td><span class="rank-badge rank-${i + 1}">${i + 1}</span></td>
-                <td><a href="../racers/${slug(r.name)}.html" class="cp-player-link"><strong>${esc(r.name)}</strong></a></td>
+                <td>${racerByNorm.has(norm(r.name))
+                    ? `<a href="../racers/${slug(racerByNorm.get(norm(r.name)))}.html" class="cp-player-link"><strong>${esc(r.name)}</strong></a>`
+                    : `<strong>${esc(r.name)}</strong>`}</td>
                 <td style="color:var(--green)">${r.wins ?? '—'}</td>
                 <td style="color:var(--red)">${r.losses ?? '—'}</td>
                 <td>${r.total ?? '—'}</td>
@@ -1208,7 +1222,7 @@ async function main() {
 
     const generatedCourseSlugs = [];
     for (const course of COURSE_ORDER) {
-        const html = generateCoursePage(course, taRecords, battleLog, battleStats);
+        const html = generateCoursePage(course, taRecords, battleLog, battleStats, racers);
         const s    = slug(course);
         fs.writeFileSync(path.join(coursesDir, `${s}.html`), html);
         generatedCourseSlugs.push(s);

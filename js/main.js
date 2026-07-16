@@ -215,8 +215,8 @@ function firstCondition(track, dir) {
 function buildTrackTabs(tracks) {
     const container = document.getElementById('track-tabs');
     container.innerHTML = tracks.map((track, i) =>
-        `<button class="track-tab${i === 0 ? ' active' : ''}" data-track="${track}">
-            ${track.toUpperCase()}
+        `<button class="track-tab${i === 0 ? ' active' : ''}" data-track="${escHtml(track)}">
+            ${escHtml(track.toUpperCase())}
          </button>`
     ).join('');
 
@@ -330,9 +330,9 @@ function filterAndRender() {
                     const cardTag  = r['Player Tag'] || r['Tag_clean'] || '';
                     const showTag  = cardTag && cardTag !== identity;
                     const playerCell = showTag
-                        ? `<strong>${identity}</strong><br>
-                           <span style="color:var(--muted);font-size:0.76em;font-family:var(--font-mono)">${cardTag}</span>`
-                        : `<strong>${identity}</strong>`;
+                        ? `<strong>${escHtml(identity)}</strong><br>
+                           <span style="color:var(--muted);font-size:0.76em;font-family:var(--font-mono)">${escHtml(cardTag)}</span>`
+                        : `<strong>${escHtml(identity)}</strong>`;
                     const lbTerms    = [...new Set([identity, cardTag].filter(Boolean).map(s => s.toLowerCase()))];
                     const lbVid      = findVideoForRecord(r, lbTerms);
                     const timeStr    = r['Time'] || '—';
@@ -631,6 +631,9 @@ const DIR_TO_ABBR = {
     'Clockwise': 'CW',
     'Downhill': 'DH', 'Uphill': 'UH',
     'Outbound': 'OB', 'Inbound': 'IB',
+    // Irohazaka's second direction is stored as "Reverse" in the sheet;
+    // idrankings (world records) files the same runs under "UH"
+    'Reverse': 'UH',
 };
 
 // Match a player search term against a video title safely.
@@ -639,14 +642,16 @@ const DIR_TO_ABBR = {
 //   "HT" must NOT match "night", "right", "eight", etc.
 // Terms that already contain non-alphanumeric characters (:v, CHON!, WHAT?, (.Y.))
 // are distinctive enough that simple inclusion is fine.
-// Parse a lap-time string like 2'44"581 (or Unicode variants) to milliseconds.
-// Used as a fallback when the sheet's Time_ms column is null/missing.
+// Milliseconds for sorting a record. The displayed Time string is the source
+// of truth — the sheet's Time_ms column has had stale values that made rows
+// sort differently than they read. Time_ms is only a fallback for rows whose
+// Time string doesn't parse.
 function timeToMs(r) {
-    const ms = r['Time_ms'];
-    if (ms != null && ms > 0) return ms;
     const s = normalizeQuotes(String(r['Time'] || ''));
     const m = s.match(/^(\d+)'(\d+)["](\d+)$/);
-    return m ? (+m[1] * 60000 + +m[2] * 1000 + +m[3]) : 9999999;
+    if (m) return +m[1] * 60000 + +m[2] * 1000 + +m[3];
+    const ms = r['Time_ms'];
+    return (ms != null && ms > 0) ? ms : 9999999;
 }
 
 function matchesPlayerTerm(title, term) {
@@ -666,6 +671,12 @@ function normalizeQuotes(s) {
     return s
         .replace(/[‘’ʼ′]/g, "'")
         .replace(/[“”″]/g, '"');
+}
+
+// Extract an 11-char YouTube video ID from a watch/short URL, or null.
+function videoIdFromUrl(u) {
+    const m = String(u || '').match(/(?:youtube\.com\/watch\?(?:[^#]*&)?v=|youtu\.be\/)([\w-]{11})/);
+    return m ? m[1] : null;
 }
 
 // Maps car name patterns to their video-title shorthand.
@@ -702,6 +713,11 @@ function carCode(car) {
 // Tiebreaker (when multiple candidates survive):
 //   Prefer the video whose title also contains the car code (e.g. "AE86").
 function findVideoForRecord(r, searchTerms) {
+    // Exact link from the sheet wins over fuzzy title matching — and works
+    // even when the YouTube API hasn't loaded (homeVideos empty).
+    const sheetVid = videoIdFromUrl(r['YouTube URL']);
+    if (sheetVid) return { id: sheetVid };
+
     if (!r['Time'] || !homeVideos.length) return null;
 
     const time    = normalizeQuotes(r['Time'].trim()).toLowerCase();
@@ -891,7 +907,7 @@ function renderRacerDetail(playerName, container) {
                         <tbody>
                             ${h2h.filter(r => r.opponent).map(r => `
                             <tr>
-                                <td>${r.opponent}</td>
+                                <td>${escHtml(r.opponent)}</td>
                                 <td style="color:var(--green)">${r.wins ?? '—'}</td>
                                 <td style="color:var(--red)">${r.losses ?? '—'}</td>
                                 <td>${r.total ?? '—'}</td>
@@ -913,7 +929,7 @@ function renderRacerDetail(playerName, container) {
                         <tbody>
                             ${battleSt.courses.filter(c => c.name).map(c => `
                             <tr>
-                                <td>${c.name}</td>
+                                <td>${escHtml(c.name)}</td>
                                 <td style="color:var(--green)">${c.wins ?? '—'}</td>
                                 <td style="color:var(--orange)">${c.losses ?? '—'}</td>
                                 <td>${c.total ?? '—'}</td>
@@ -1017,7 +1033,7 @@ function renderRacerDetail(playerName, container) {
                             <img src="${thumb}" alt="${escHtml(v.title)}" loading="lazy">
                         </div>
                         <div class="video-info">
-                            <div class="video-title">${v.title}</div>
+                            <div class="video-title">${escHtml(v.title)}</div>
                             ${dateStr
                                 ? `<div class="video-date" style="margin-top:0.4rem">${dateStr}</div>`
                                 : ''}
@@ -1167,10 +1183,10 @@ async function initBattleLeaderboard() {
     }
 
     function renderCell(col, val) {
-        if (isElo(col))    return `<span class="elo-value">${val ?? '—'}</span>`;
-        if (isWinPct(col)) return fmtPctCell(val);
-        if (isDate(col))   return fmtDate(val);
-        return val ?? '—';
+        if (isElo(col))    return `<span class="elo-value">${escHtml(val ?? '—')}</span>`;
+        if (isWinPct(col)) return escHtml(fmtPctCell(val));
+        if (isDate(col))   return escHtml(fmtDate(val));
+        return escHtml(val ?? '—');
     }
 
     // ── Render ──────────────────────────────────────────────
@@ -1191,12 +1207,15 @@ async function initBattleLeaderboard() {
                     ${displayCols.map(c => {
                         const val = r[c];
 
-                        // Player column — link to racer profile if known
+                        // Player column — link to racer profile if known.
+                        // Normalised match so sheet variants like ":V" still hit ":v";
+                        // the canonical RACERS name is what gets passed to openRacerDetail.
                         if (c === playerKey) {
-                            const name      = String(val ?? '');
-                            const isKnown   = RACERS.some(rc => rc.name === name);
-                            const inner     = isKnown
-                                ? `<button class="battle-player-link" data-racer="${escHtml(name)}">${escHtml(name)}</button>`
+                            const name  = String(val ?? '');
+                            const known = RACERS.find(rc =>
+                                rc.name === name || normalizeName(rc.name) === normalizeName(name));
+                            const inner = known
+                                ? `<button class="battle-player-link" data-racer="${escHtml(known.name)}">${escHtml(known.name)}</button>`
                                 : `<strong>${escHtml(name) || '—'}</strong>`;
                             return `<td>${inner}</td>`;
                         }

@@ -111,6 +111,9 @@ Use the `trackEvent(name, params)` helper (safe no-op if gtag not loaded).
 
 ## Known quirks / gotchas
 - **HT's tag in the sheet is `H-T`** — `normalizeName()` strips non-alphanumerics so `HT` matches `H-T`
+- **YouTube API key is HTTP-referrer-restricted** to the site's domain. Build-time (server-side) fetches in `build.js` must send `Referer: https://initialdsanfrancisco.com/` or Google returns 403 and the videos.html JSON-LD/noscript content silently comes out empty (`fetchYouTubeVideos` handles this via `YT_FETCH_OPTS`).
+- **Sheet data uses `Reverse` (Irohazaka) and `Snow` (Akina Snow)** as direction/condition values. idrankings files those runs under `UH` and `Dry` respectively — `DIR_TO_ABBR` maps Reverse→UH, and `getWorldRecord()` falls back to Dry, so the WR strip works on both tabs.
+- **Guest players in the TA sheet** (CAL, DROOL, NARF, JDV, WIND, RICE, PJSV, `:)`) have no racer pages. Anything that links a player name to `/racers/…` must first check the name against the RACERS roster (normalized), or you generate 404 links.
 - **`allRecords` race condition** — `_leaderboardPromise` is stored and awaited alongside `loadDetailSheets()` in `openRacerDetail()` so TA records are always ready before rendering
 - **Video/record race condition** — `filterAndRender()` is called again inside `initVideos()` after `homeVideos` is populated, guarded by `if (activeTrack)`
 - **Battle leaderboard** previously used a two-column Helper_* layout; now reads from 'Battle Records by Racer' which is a clean single-column layout maintained by Google Apps Script
@@ -124,6 +127,7 @@ Use the `trackEvent(name, params)` helper (safe no-op if gtag not loaded).
 ## Card name aliases
 - **DAWN** is DUSK's alternate card name. All DAWN rows in the TA sheet have `Identity = DUSK`, so they are correctly attributed to DUSK. No fix needed.
 - **H-T** is HT's old card tag. Some TA rows may still show H-T as `Player Tag` — these are correctly matched to HT via `normalizeName()`.
+- **:V** — the 'Battle Records by Racer' sheet stores :v in caps. Player-name comparisons against sheet data must use `normalizeName()`, never exact string match (this broke the standings profile link once).
 
 ## TA-only players (no battle history)
 JINRO and SHI have time attack records but do not appear in any battle sheet. This is expected — they've recorded times but haven't played ranked battles.

@@ -74,7 +74,9 @@ async function loadWorldRecords() {
  */
 function getWorldRecord(courseName, dirAbbr, condition) {
     if (!_wrData) return null;
-    return _wrData[`${courseName}|${dirAbbr}|${condition}`] ?? null;
+    return _wrData[`${courseName}|${dirAbbr}|${condition}`]
+        ?? _wrData[`${courseName}|${dirAbbr}|Dry`]
+        ?? null;
 }
 
 /**

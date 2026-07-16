@@ -16,8 +16,10 @@ function escHtml(s) {
 const SHEET_ID        = '1MaofC1e4XlJ3XtKAokq34Q3q5vTziuz8NNPS7tHZD3E';
 const BATTLE_LOG_GID  = '1322076132';
 
-// Course names used for title parsing
-const COURSES = ['Myogi', 'Usui', 'Akagi', 'Akina', 'Irohazaka', 'Happogahara', 'Shomaru', 'Tsuchisaka'];
+// Course names used for title parsing.
+// 'Akina Snow' must come before 'Akina' — extractCourse() takes the first
+// substring match, so snow runs would otherwise be tagged as plain Akina.
+const COURSES = ['Myogi', 'Usui', 'Akagi', 'Akina Snow', 'Akina', 'Irohazaka', 'Happogahara', 'Shomaru', 'Tsuchisaka'];
 
 // Direction abbreviations found in TA titles (e.g. "Myogi CCW")
 const DIR_ABBRS = {
