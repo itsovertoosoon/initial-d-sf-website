@@ -18,11 +18,12 @@
 const fs   = require('fs');
 const path = require('path');
 
+const BattleEngine = require('./js/battle-engine.js');
+
 const SHEET_ID       = '1MaofC1e4XlJ3XtKAokq34Q3q5vTziuz8NNPS7tHZD3E';
 const SITE_URL       = 'https://initialdsanfrancisco.com';
 const COURSE_ORDER   = ['Myogi', 'Usui', 'Akagi', 'Akina', 'Irohazaka', 'Akina Snow', 'Happogahara', 'Shomaru', 'Tsuchisaka'];
-const SUBHEADER      = /^(course|opponent|player|racer|name)$/i;
-const BATTLE_LOG_GID = '1322076132';
+const ELO_CALC_GID   = BattleEngine.ELO_CALC_GID;
 
 const COURSE_IMAGES = {
     'Myogi':       'Courses/Myogi_map.webp',
@@ -133,51 +134,6 @@ async function fetchYouTubeVideos(apiKey, channelId) {
     return videos;
 }
 
-/* ── Battle stats parsers (mirrors parseBattleStats / parseHeadToHead in main.js) ── */
-function parseBattleStats(rawRows) {
-    const result = {};
-    let cur = null;
-    rawRows.forEach(row => {
-        const vals     = Object.values(row);
-        const first    = vals[0];
-        const restNull = vals.slice(1).every(v => v == null || v === '');
-        if (first == null) return;
-        const str = String(first).trim();
-        if (SUBHEADER.test(str)) return;
-        if (restNull) {
-            const m   = str.match(/^(.+?)\s*[—\-–]\s*(.+)/);
-            const name = m ? m[1].trim() : str;
-            cur = name;
-            result[name] = { overall: m ? m[2].trim() : '', courses: [] };
-        } else if (cur) {
-            result[cur].courses.push({ name: vals[0], wins: vals[1], losses: vals[2], total: vals[3], winPct: vals[4] });
-        }
-    });
-    return result;
-}
-
-function parseHeadToHead(rawRows) {
-    const result = {};
-    let cur = null;
-    rawRows.forEach(row => {
-        const vals     = Object.values(row);
-        const first    = vals[0];
-        const restNull = vals.slice(1).every(v => v == null || v === '');
-        if (first == null) return;
-        const str = String(first).trim();
-        if (SUBHEADER.test(str)) return;
-        if (restNull) {
-            const m   = str.match(/^(.+?)\s*[—\-–]/);
-            const name = m ? m[1].trim() : str;
-            cur = name;
-            if (!result[name]) result[name] = [];
-        } else if (cur) {
-            result[cur].push({ opponent: vals[0], wins: vals[1], losses: vals[2], total: vals[3], winPct: vals[4] });
-        }
-    });
-    return result;
-}
-
 /* ── Find player data by normalised name ─────────────────────────────────── */
 function findPlayer(cache, playerName) {
     if (!cache) return null;
@@ -250,9 +206,10 @@ function generateRacerPage(racer, taByCar, battle, h2h, standing) {
     const playerSlug    = slug(name);
     const imgSrc        = img ? `../${img}` : null;
     const ogImage       = img ? `${SITE_URL}/${img}` : `${SITE_URL}/squad.jpg`;
-    const rank          = standing ? standing['Rank'] ?? standing['rank'] : null;
-    const elo           = standing ? standing['ELO']  ?? standing['Elo']  : null;
-    const streak        = standing ? standing['Streak'] : null;
+    // standing comes from BattleEngine.deriveStandings() — published matches only
+    const rank          = standing ? standing.rank : null;
+    const elo           = standing && standing.elo != null ? standing.elo.toFixed(2) : null;
+    const streak        = standing ? standing.streak : null;
     const carNames      = Object.keys(taByCar);
     const abbr          = name.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || '??';
 
@@ -426,7 +383,7 @@ function generateRacerPage(racer, taByCar, battle, h2h, standing) {
                 <div>${avatarHtml}</div>
                 <div>
                     <div class="rp-name">${esc(name)}</div>
-                    <div class="rp-meta">
+                    <div class="rp-meta" id="rp-meta">
                         ${rank ? `RANK <span>#${rank}</span> &nbsp;·&nbsp; ` : ''}
                         ${elo  ? `ELO <span>${elo}</span> &nbsp;·&nbsp; ` : ''}
                         ${battle?.overall ? `<span>${esc(battle.overall)}</span> &nbsp;·&nbsp; ` : ''}
@@ -445,9 +402,9 @@ function generateRacerPage(racer, taByCar, battle, h2h, standing) {
     <div class="dark-band">
         <section class="section">
             <h2 class="detail-group-label" style="margin-bottom:1.5rem">BATTLE RECORDS</h2>
-            ${noBattle
+            <div id="rp-battle-body">${noBattle
                 ? `<p class="detail-empty">No battle records on file.</p>`
-                : `<div class="rp-two-col">${h2hHtml}${courseHtml}</div>`}
+                : `<div class="rp-two-col">${h2hHtml}${courseHtml}</div>`}</div>
         </section>
     </div>
 
@@ -468,6 +425,7 @@ function generateRacerPage(racer, taByCar, battle, h2h, standing) {
     </footer>
     <script src="../data/videos.js"></script>
     <script src="../js/youtube.js"></script>
+    <script src="../js/battle-engine.js"></script>
     <script>
     (function () {
         // ── Nav toggle ──────────────────────────────────────────
@@ -486,16 +444,23 @@ function generateRacerPage(racer, taByCar, battle, h2h, standing) {
             });
         }
 
-        // ── Racer video feed ────────────────────────────────────
+        var PLAYER_NAME = ${JSON.stringify(name)};
+
+        // One shared upload-list fetch: the video feed renders it, and the
+        // battle refresh below uses it to decide which matches are public.
+        var videosPromise = (typeof loadVideos === 'function')
+            ? loadVideos().catch(function () { return null; })
+            : Promise.resolve(null);
+
+        // -- Racer video feed ------------------------------------
         // Uses word-boundary matching for pure alphanumeric names (e.g. HT)
         // so we don't false-positive on common words like "night", "right".
-        var PLAYER_NAME    = ${JSON.stringify(name)};
         var isAlphanumeric = /^[a-z0-9]+$/i.test(PLAYER_NAME);
 
         function matchesPlayer(title) {
             if (isAlphanumeric) {
-                // Safe to interpolate directly — isAlphanumeric guarantees no regex special chars.
-                // Capturing groups instead of lookbehind — Safari 16 and earlier don't support (?<!...)
+                // Safe to interpolate directly - isAlphanumeric guarantees no regex special chars.
+                // Capturing groups instead of lookbehind - Safari 16 and earlier don't support (?<!...)
                 return new RegExp('(^|[^a-z0-9])' + PLAYER_NAME + '([^a-z0-9]|$)', 'i').test(title);
             }
             return title.toLowerCase().indexOf(PLAYER_NAME.toLowerCase()) !== -1;
@@ -503,10 +468,9 @@ function generateRacerPage(racer, taByCar, battle, h2h, standing) {
 
         var grid    = document.getElementById('racer-video-grid');
         var section = document.getElementById('racer-videos-section');
-        if (typeof loadVideos !== 'function') { grid.innerHTML = ''; return; }
 
-        loadVideos().then(function (result) {
-            if (result.status !== 'ok' || !result.videos || !result.videos.length) {
+        videosPromise.then(function (result) {
+            if (!result || result.status !== 'ok' || !result.videos || !result.videos.length) {
                 grid.innerHTML = '';
                 return;
             }
@@ -537,6 +501,135 @@ function generateRacerPage(racer, taByCar, battle, h2h, standing) {
         }).catch(function () {
             grid.innerHTML = '';
         });
+
+        // -- Live battle stats -----------------------------------
+        // The rank / ELO / record above and the tables below are a deploy-time
+        // snapshot, gated to videos that were public when the site was built.
+        // Videos keep publishing between deploys, so re-derive from the Elo
+        // calc tab on load and repaint. Deploys stay optional; the numbers
+        // still never include a battle whose video hasn't gone live.
+        var SHEET_ID     = ${JSON.stringify(SHEET_ID)};
+        var CALC_GID     = ${JSON.stringify(ELO_CALC_GID)};
+        var COURSE_ORDER = ${JSON.stringify(COURSE_ORDER)};
+
+        function fetchCalcTab() {
+            return new Promise(function (resolve) {
+                var cb = '_rp_gviz_' + Math.random().toString(36).slice(2);
+                var el;
+                function cleanup() { delete window[cb]; if (el) el.remove(); }
+                var timer = setTimeout(function () { cleanup(); resolve(null); }, 10000);
+
+                window[cb] = function (response) {
+                    clearTimeout(timer);
+                    cleanup();
+                    var table = response && response.table;
+                    if (!table) { resolve(null); return; }
+                    var cols = table.cols.map(function (c) {
+                        var label = (c.label || '').trim();
+                        if (label.length > 25) return label.split(/\s+/).pop() || c.id;
+                        return label || c.id;
+                    });
+                    resolve(table.rows.filter(function (r) {
+                        return r.c && r.c.some(function (c) { return c && c.v != null; });
+                    }).map(function (r) {
+                        var o = {};
+                        r.c.forEach(function (c, i) { o[cols[i]] = c ? c.v : null; });
+                        return o;
+                    }));
+                };
+
+                el = document.createElement('script');
+                el.id = cb;
+                el.onerror = function () { clearTimeout(timer); cleanup(); resolve(null); };
+                el.src = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID +
+                         '/gviz/tq?tqx=out:json;responseHandler:' + cb + '&gid=' + CALC_GID;
+                document.head.appendChild(el);
+            });
+        }
+
+        function escapeHtml(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function pct(v) { return (v * 100).toFixed(1) + '%'; }
+
+        function statTable(label, keyName, rows, lossColour) {
+            return '<div class="detail-section">' +
+                '<div class="detail-section-label">// ' + label + '</div>' +
+                '<table class="leaderboard-table"><thead><tr>' +
+                '<th>' + keyName + '</th><th>W</th><th>L</th><th>TOTAL</th><th>WIN%</th>' +
+                '</tr></thead><tbody>' +
+                rows.map(function (r) {
+                    return '<tr><td>' + escapeHtml(r.key) + '</td>' +
+                        '<td style="color:var(--green)">' + r.wins + '</td>' +
+                        '<td style="color:' + lossColour + '">' + r.losses + '</td>' +
+                        '<td>' + r.total + '</td>' +
+                        '<td style="color:var(--muted)">' + pct(r.winPct) + '</td></tr>';
+                }).join('') +
+                '</tbody></table></div>';
+        }
+
+        function findByName(obj, key) {
+            var hit = null;
+            Object.keys(obj).forEach(function (n) {
+                if (BattleEngine.normName(n) === key) hit = obj[n];
+            });
+            return hit;
+        }
+
+        if (typeof BattleEngine !== 'undefined') {
+            Promise.all([fetchCalcTab(), videosPromise]).then(function (res) {
+                var rows = res[0], ytResult = res[1];
+                if (!rows || !rows.length) return;   // keep the build-time snapshot
+
+                var videos    = (ytResult && ytResult.videos) || [];
+                var published = BattleEngine.splitByPublished(
+                    BattleEngine.parseMatches(rows),
+                    { publishedIds: BattleEngine.publishedIdsFrom(videos) }
+                ).published;
+                if (!published.length) return;
+
+                var key  = BattleEngine.normName(PLAYER_NAME);
+                var mine = BattleEngine.deriveStandings(published).filter(function (s) {
+                    return BattleEngine.normName(s.racer) === key;
+                })[0];
+                if (!mine) return;   // no published battles for this racer yet
+
+                var mineByCourse = findByName(BattleEngine.deriveByCourse(published, COURSE_ORDER), key);
+                var mineH2H      = findByName(BattleEngine.deriveHeadToHead(published), key);
+
+                var meta = document.getElementById('rp-meta');
+                if (meta) {
+                    var bits = ['RANK <span>#' + mine.rank + '</span>'];
+                    if (mine.elo != null) bits.push('ELO <span>' + mine.elo.toFixed(2) + '</span>');
+                    bits.push('<span>' + mine.wins + 'W ' + mine.losses + 'L (' +
+                              pct(mine.winPct) + ' overall)</span>');
+                    if (mine.streak) bits.push('STREAK <span>' + escapeHtml(mine.streak) + '</span>');
+                    meta.innerHTML = bits.join(' &nbsp;&middot;&nbsp; ');
+                }
+
+                var body = document.getElementById('rp-battle-body');
+                if (body) {
+                    var tables = '';
+                    if (mineH2H && mineH2H.length) {
+                        tables += statTable('HEAD TO HEAD', 'OPPONENT', mineH2H.map(function (r) {
+                            return { key: r.opponent, wins: r.wins, losses: r.losses, total: r.total, winPct: r.winPct };
+                        }), 'var(--red)');
+                    }
+                    if (mineByCourse && mineByCourse.courses.length) {
+                        tables += statTable('BY COURSE', 'COURSE', mineByCourse.courses.map(function (r) {
+                            return { key: r.name, wins: r.wins, losses: r.losses, total: r.total, winPct: r.winPct };
+                        }), 'var(--orange)');
+                    }
+                    body.innerHTML = tables
+                        ? '<div class="rp-two-col">' + tables + '</div>'
+                        : '<p class="detail-empty">No battle records on file.</p>';
+                }
+            }).catch(function () { /* snapshot stands */ });
+        }
+
     })();
     </script>
 </body>
@@ -544,7 +637,7 @@ function generateRacerPage(racer, taByCar, battle, h2h, standing) {
 }
 
 /* ── Generate courses index page (courses.html) ──────────────────────────── */
-function generateCoursesIndex(taRecords, battleLog) {
+function generateCoursesIndex(taRecords, matches) {
     const cards = COURSE_ORDER.map(course => {
         const imgFile = COURSE_IMAGES[course];
         const s       = slug(course);
@@ -554,8 +647,9 @@ function generateCoursesIndex(taRecords, battleLog) {
                 `${r['Identity']||r['Player Tag']||''}|${r['Car_clean']||r['Car']||''}|${r['Direction']}|${r['Condition']}`
             )
         )].length;
-        const battleCount = battleLog.filter(r =>
-            r['Course'] && r['Course'].toLowerCase() === course.toLowerCase()
+        // Published matches only — a scheduled upload shouldn't bump the count
+        const battleCount = matches.filter(m =>
+            BattleEngine.normName(m.course) === BattleEngine.normName(course)
         ).length;
         const fastest = taRecords
             .filter(r => r['Map'] === course && (r['Time_ms'] || r['Time']))
@@ -735,7 +829,7 @@ function generateCoursesIndex(taRecords, battleLog) {
 }
 
 /* ── Generate one course page ────────────────────────────────────────────── */
-function generateCoursePage(courseName, taRecords, battleLog, battleStats, racers) {
+function generateCoursePage(courseName, taRecords, matches, racers) {
     // Canonical roster names by normalised form — guests (CAL, MJ, KAY, …) have
     // no racer page, so their names must render as plain text, not dead links.
     const racerByNorm = new Map((racers || []).map(r => [norm(r.name), r.name]));
@@ -770,23 +864,10 @@ function generateCoursePage(courseName, taRecords, battleLog, battleStats, racer
         (a, b) => (DIR_ORDER.indexOf(a) + 1 || 999) - (DIR_ORDER.indexOf(b) + 1 || 999)
     );
 
-    // ── Aggregated battle standings for this course (from Racers by Course sheet) ──
-    const courseStandings = [];
-    Object.entries(battleStats || {}).forEach(([racerName, data]) => {
-        const rec = (data.courses || []).find(c =>
-            c.name && c.name.toLowerCase() === courseName.toLowerCase()
-        );
-        if (rec && (rec.wins != null || rec.losses != null)) {
-            courseStandings.push({
-                name:   racerName,
-                wins:   rec.wins   ?? 0,
-                losses: rec.losses ?? 0,
-                total:  rec.total  ?? 0,
-                winPct: rec.winPct,
-            });
-        }
-    });
-    courseStandings.sort((a, b) => (b.wins - a.wins) || ((b.winPct || 0) - (a.winPct || 0)));
+    // ── Aggregated battle standings for this course ──
+    // Derived from the published matches, so a scheduled upload's result never
+    // shows up here early. Already sorted by wins, then win rate.
+    const courseStandings = BattleEngine.deriveCourseStandings(matches, courseName);
 
     const metaDesc = `Time attack records and battle history for ${courseName} in Initial D Arcade Stage Version 3 — SF Bay Area community.`;
 
@@ -1079,19 +1160,16 @@ async function main() {
     const racers = readRacers();
     console.log(`[build] RACERS array: ${racers.length} players`);
 
-    const sheetLabels = ['TA records', 'Battle standings', 'Battle stats', 'H2H', 'Battle log', 'YouTube'];
+    const sheetLabels = ['TA records', 'Elo calc tab', 'YouTube'];
     const results = await Promise.allSettled([
         fetchSheet('0'),
-        fetchSheet('Battle Records by Racer', 'A4:I'),
-        fetchSheet('Racers by Course'),
-        fetchSheet('Head_to_Head'),
-        fetchSheet(BATTLE_LOG_GID),
+        fetchSheet(ELO_CALC_GID),
         (apiKey && channelId)
             ? fetchYouTubeVideos(apiKey, channelId)
             : Promise.resolve([]),
     ]);
 
-    const [taRecords, battleStandings, battleStatsRaw, h2hRaw, battleLog, ytVideos] = results.map((r, i) => {
+    const [taRecords, calcRows, ytVideos] = results.map((r, i) => {
         if (r.status === 'rejected') {
             console.warn(`[build] ${sheetLabels[i]} fetch failed: ${r.reason?.message ?? r.reason}`);
             return [];
@@ -1099,13 +1177,31 @@ async function main() {
         return r.value;
     });
 
-    console.log(`[build] TA: ${taRecords.length} rows, Standings: ${battleStandings.length}, Battle stats: ${battleStatsRaw.length}, H2H: ${h2hRaw.length}, Battle log: ${battleLog.length}, Videos: ${ytVideos.length}`);
+    console.log(`[build] TA: ${taRecords.length} rows, Elo calc: ${calcRows.length} matches, Videos: ${ytVideos.length}`);
 
-    const battleStats = parseBattleStats(battleStatsRaw);
-    const headToHead  = parseHeadToHead(h2hRaw);
+    // ── Battle stats: published matches only ───────────────────────────────
+    // The battle log holds matches whose videos are still scheduled. Aggregating
+    // all of them (as the Apps Script standings sheet does) spoils every pending
+    // upload, so everything below is derived from the published subset instead.
+    const allMatches = BattleEngine.parseMatches(calcRows);
+
+    const outOfOrder = BattleEngine.checkChainOrder(allMatches);
+    if (outOfOrder.length) {
+        console.warn(`[build] WARNING: Elo calc tab is not date-ascending at rows ${outOfOrder.join(', ')}. ` +
+            `The publish cut assumes chronological rows — ratings may read from an incomplete chain.`);
+    }
+
+    const { published: matches, withheld } = BattleEngine.splitByPublished(allMatches, {
+        publishedIds: BattleEngine.publishedIdsFrom(ytVideos),
+    });
+    console.log(`[build] Battles: ${matches.length} published, ${withheld.length} awaiting upload (excluded)`);
+
+    const battleStandings = BattleEngine.deriveStandings(matches);
+    const battleStats     = BattleEngine.deriveByCourse(matches, COURSE_ORDER);
+    const headToHead      = BattleEngine.deriveHeadToHead(matches);
 
     const knownPlayers = [...new Set([
-        ...battleStandings.map(r => r['Racer']).filter(Boolean),
+        ...battleStandings.map(r => r.racer).filter(Boolean),
         ...taRecords.map(taPlayerName).filter(n => n && n.length <= 10),
     ])].sort();
 
@@ -1131,9 +1227,9 @@ async function main() {
 
     let indexNS = `<noscript>\n<div id="prerender-content" style="display:none" aria-hidden="true">\n`;
     indexNS += `<section><h2>Battle Standings — Initial D Arcade Stage Version 3</h2>\n<table><thead><tr><th>Rank</th><th>Player</th><th>ELO</th><th>Wins</th><th>Losses</th><th>Win %</th></tr></thead><tbody>\n`;
-    battleStandings.forEach((r, i) => {
-        if (!r['Racer']) return;
-        indexNS += `<tr><td>${i+1}</td><td>${r['Racer']}</td><td>${r['ELO']??''}</td><td>${r['Wins']??''}</td><td>${r['Losses']??''}</td><td>${r['Win %']??''}</td></tr>\n`;
+    battleStandings.forEach(r => {
+        if (!r.racer) return;
+        indexNS += `<tr><td>${r.rank}</td><td>${esc(r.racer)}</td><td>${r.elo == null ? '' : r.elo.toFixed(2)}</td><td>${r.wins}</td><td>${r.losses}</td><td>${(r.winPct*100).toFixed(1)}%</td></tr>\n`;
     });
     indexNS += `</tbody></table></section>\n<section><h2>Time Attack Records — Initial D Arcade Stage Version 3</h2>\n`;
     for (const course of courses) {
@@ -1199,7 +1295,7 @@ async function main() {
         const taByCar   = getPlayerTA(taRecords, racer.name);
         const battle    = findPlayer(battleStats, racer.name);
         const h2h       = findPlayer(headToHead,  racer.name);
-        const standing  = battleStandings.find(r => norm(r['Racer']) === norm(racer.name)) || null;
+        const standing  = battleStandings.find(r => norm(r.racer) === norm(racer.name)) || null;
         const html      = generateRacerPage(racer, taByCar, battle, h2h, standing);
         const s         = slug(racer.name);
         fs.writeFileSync(path.join(racersDir, `${s}.html`), html);
@@ -1210,7 +1306,7 @@ async function main() {
     // ══════════════════════════════════════════════════════════════════
     //  Courses index page
     // ══════════════════════════════════════════════════════════════════
-    const coursesIndexHtml = generateCoursesIndex(taRecords, battleLog);
+    const coursesIndexHtml = generateCoursesIndex(taRecords, matches);
     fs.writeFileSync(path.join(__dirname, 'courses.html'), coursesIndexHtml);
     console.log('[build] courses.html ✓');
 
@@ -1222,7 +1318,7 @@ async function main() {
 
     const generatedCourseSlugs = [];
     for (const course of COURSE_ORDER) {
-        const html = generateCoursePage(course, taRecords, battleLog, battleStats, racers);
+        const html = generateCoursePage(course, taRecords, matches, racers);
         const s    = slug(course);
         fs.writeFileSync(path.join(coursesDir, `${s}.html`), html);
         generatedCourseSlugs.push(s);

@@ -502,6 +502,16 @@ a.nav-logo {
 .leaderboard-table tr:last-child td { border-bottom: none; }
 .leaderboard-table tbody tr:hover td { background: rgba(255,106,0,0.03); }
 
+/* Footnote under the battle standings: logged matches whose video hasn't
+   gone live yet are excluded, so the board never spoils a scheduled upload. */
+.battle-pending-note {
+    margin-top: 0.9rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    line-height: 1.7;
+    color: var(--muted);
+}
+
 .rank-badge {
     font-family: var(--font-mono);
     font-size: 0.82rem;

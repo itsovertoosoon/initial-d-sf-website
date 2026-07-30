@@ -29,6 +29,7 @@ videos.html         — videos archive page (filterable by category/course/playe
 courses.html        — course directory index (BUILD-GENERATED)
 css/style.css       — all styles; CSS custom properties in :root
 js/main.js          — leaderboard, racer grid, racer detail panel logic
+js/battle-engine.js — shared (browser + build.js): publish gate + all battle stat derivation
 js/youtube.js       — YouTube API fetch + localStorage cache (1hr TTL)
 js/videos.js        — videos page logic (category/course/player filters + URL params)
 data/videos.js      — YouTube API key + channel ID config
@@ -52,14 +53,16 @@ sitemap.xml         — BUILD-GENERATED; placeholder in repo, overwritten at dep
 | Constant | Reference | Contents |
 |---|---|---|
 | `LEADERBOARD_GID = '0'` | GID (stable, it's the first sheet) | Time attack records |
-| `BATTLE_STATS_SHEET = 'Racers by Course'` | Sheet name | Battle W/L by course per player |
-| `HEAD_TO_HEAD_SHEET = 'Head_to_Head'` | Sheet name | Battle W/L per opponent per player |
-| `BATTLE_LEADERBOARD_SHEET = 'Battle Records by Racer'` | Sheet name | ELO rankings (rows 1–3 are titles; fetched with `range='A4:I'`) |
+| `ELO_CALC_GID = '20260409'` | GID | **The only battle source the site reads.** One row per match with the full Elo audit trail (`Elo_A_before/after`, `Expected_*`, `Session_*`) written by Apps Script |
+| `BATTLE_LOG_GID = '1322076132'` | GID | Raw battle log — still read by `js/videos.js` only, to classify a video as a battle |
 
-**Important:** Use sheet names (not GIDs) for the battle sheets — GIDs break whenever the spreadsheet is reorganised. `fetchSheetData()` accepts either; all-digit strings are treated as GIDs, anything else as a sheet name.
+**Important:** Use sheet names (not GIDs) where a sheet may be reorganised — GIDs break when tabs are recreated. `fetchSheetData()` accepts either; all-digit strings are treated as GIDs, anything else as a sheet name.
+
+### Sheets the site deliberately does NOT read
+`Battle Records by Racer`, `Racers by Course` and `Head_to_Head` are Apps Script aggregates over **every** logged row, including matches whose videos are still scheduled — so they spoil pending uploads (see the publish gate below). They're still maintained in the spreadsheet for the owner's own use; nothing on the site consumes them. Don't wire them back in.
 
 ### Sheet data structure
-Sheets use a grouped format with three row types:
+The TA sheet uses a grouped format with three row types:
 1. **Player header rows** — first cell has player name, rest are null (or a merged title string)
 2. **Subheader rows** — column labels like "Course", "Opponent", "Wins" — skipped by `SUBHEADER_LABELS` regex
 3. **Data rows** — actual records
@@ -68,6 +71,29 @@ The gviz parser trims long merged-cell labels to their last word. Column header 
 ```js
 const SUBHEADER_LABELS = /^(course|opponent|player|racer|name)$/i;
 ```
+
+The Elo calc tab is a flat one-row-per-match table — no grouping, no subheaders.
+
+## The publish gate (`js/battle-engine.js`)
+
+Battle videos go out on a schedule, so the battle log always contains rows dated in the **future**: matches already played and logged, whose video isn't public yet. Column `Date` is the video's **publish** date; column `Recorded Date` is when it was actually played.
+
+Every battle number on the site — ELO, rank, W/L, matches, win%, streak, last active, by-course, head-to-head, course battle counts — is derived from the Elo calc tab **filtered to matches whose video is live**. A match counts when either:
+
+1. its video ID is in the channel's upload list (exact, and true the moment a scheduled video publishes), **or**
+2. it is dated **strictly before today** — covers legacy rows that hold a pasted title instead of a URL, and keeps the gate working if the YouTube fetch fails.
+
+Rule 2 is deliberately `< today`, not `<= today`: without the video list, a row scheduled for later today stays hidden rather than publishing its result hours early. Trade-off is a lag until midnight in that fallback case only.
+
+**ELO is never recomputed here.** The calc tab holds a running Elo chain in publish order, so a player's current rating is just `Elo_A_after`/`Elo_B_after` from their most recent published row. The Google engine remains the single source of truth for the rating math (K-factor, etc.).
+
+Consequences:
+- The board advances on its own as videos go live — **no Apps Script run and no deploy needed.**
+- A player whose only battles are unpublished doesn't appear on the board yet.
+- **Row order in the calc tab IS the Elo chain order**, so rows are never re-sorted. `checkChainOrder()` warns (build log + browser console) if the tab stops being date-ascending, which would make the publish cut non-contiguous. If you ever backdate an inserted match, re-sort the calc tab.
+- Racer pages carry a build-time snapshot in their static HTML (good for SEO, never spoils) **and** re-derive client-side on load, so they stay current between deploys. Course pages are build-time only — gated, so never spoiling, but their battle standings can lag until the next deploy.
+
+**Still open (spreadsheet side):** `Battle Records by Racer` itself remains unfiltered, so opening the sheet still reveals pending results. Fixing that means adding a `Date <= TODAY` filter in the Apps Script.
 
 ## Player list
 Defined in the `RACERS` array in `js/main.js`. Keep it alphabetical — letters A–Z first, then symbols.
@@ -116,7 +142,7 @@ Use the `trackEvent(name, params)` helper (safe no-op if gtag not loaded).
 - **Guest players in the TA sheet** (CAL, DROOL, NARF, JDV, WIND, RICE, PJSV, `:)`) have no racer pages. Anything that links a player name to `/racers/…` must first check the name against the RACERS roster (normalized), or you generate 404 links.
 - **`allRecords` race condition** — `_leaderboardPromise` is stored and awaited alongside `loadDetailSheets()` in `openRacerDetail()` so TA records are always ready before rendering
 - **Video/record race condition** — `filterAndRender()` is called again inside `initVideos()` after `homeVideos` is populated, guarded by `if (activeTrack)`
-- **Battle leaderboard** previously used a two-column Helper_* layout; now reads from 'Battle Records by Racer' which is a clean single-column layout maintained by Google Apps Script
+- **Battle leaderboard** used to read the Apps Script standings sheet (and before that a two-column `Helper_*` layout). It now derives everything from the Elo calc tab through `js/battle-engine.js` with fixed columns — no dynamic column discovery, no `Helper_*` merging.
 - **Short player name false positives** — `matchesPlayerTerm()` in `main.js` uses lookaround assertions for pure alphanumeric names so e.g. `HT` doesn't match "night", "right", "eight". Same logic is inlined in the generated racer page scripts in `build.js`
 
 ## Roster exceptions (do not add these to RACERS)
@@ -127,32 +153,35 @@ Use the `trackEvent(name, params)` helper (safe no-op if gtag not loaded).
 ## Card name aliases
 - **DAWN** is DUSK's alternate card name. All DAWN rows in the TA sheet have `Identity = DUSK`, so they are correctly attributed to DUSK. No fix needed.
 - **H-T** is HT's old card tag. Some TA rows may still show H-T as `Player Tag` — these are correctly matched to HT via `normalizeName()`.
-- **:V** — the 'Battle Records by Racer' sheet stores :v in caps. Player-name comparisons against sheet data must use `normalizeName()`, never exact string match (this broke the standings profile link once).
+- **:V** — the battle sheets store :v in caps. Player-name comparisons against sheet data must use `normalizeName()` / `BattleEngine.normName()`, never exact string match (this broke the standings profile link once).
 
 ## TA-only players (no battle history)
 JINRO and SHI have time attack records but do not appear in any battle sheet. This is expected — they've recorded times but haven't played ranked battles.
 
 ## Static page generation (build.js)
 
+All battle inputs below are the **publish-gated** derivations from `BattleEngine` — see "The publish gate" above.
+
 ### Racer pages — `generateRacerPage(racer, taByCar, battle, h2h, standing)`
 Located at `/racers/[slug].html`. Contains:
-- Hero with avatar, ELO, rank, overall record
+- Hero with avatar, ELO, rank, overall record (`standing` is a `deriveStandings()` row: `{rank, elo, wins, losses, matches, winPct, streak, lastActive}`)
 - TIME ATTACK RECORDS table (grouped by car, sorted by course order, course names link to course pages)
 - BATTLE RECORDS section — H2H table + by-course table in two-column layout
 - VIDEOS section — client-side feed via `../data/videos.js` + `../js/youtube.js`, up to 12 videos, hidden if none found
+- **Client-side battle refresh** — also loads `../js/battle-engine.js`, re-fetches the Elo calc tab via JSONP on load, and repaints `#rp-meta` + `#rp-battle-body` so the page stays current between deploys. The static markup is the build-time snapshot and stands if the fetch fails.
 - ProfilePage + BreadcrumbList JSON-LD
 - `playerSlug(name)` / `slug(name)` — strip non-alphanumeric, lowercase (mirrors `main.js`)
 
-### Course pages — `generateCoursePage(courseName, taRecords, battleLog, battleStats)`
+### Course pages — `generateCoursePage(courseName, taRecords, matches, racers)`
 Located at `/courses/[slug].html`. Contains:
 - Hero with course map image (faded background)
 - TIME ATTACK RECORDS — grouped by direction → condition, ranked leaderboard per group, player names link to racer pages
-- BATTLE STANDINGS — aggregated W/L table from `parseBattleStats()`, sorted by wins then win%
+- BATTLE STANDINGS — from `BattleEngine.deriveCourseStandings(matches, courseName)`, already sorted by wins then win%
 - VIDEOS section — client-side feed filtered by course name, up to 12 videos
 - WebPage + BreadcrumbList JSON-LD
 
-### Courses index — `generateCoursesIndex(taRecords, battleLog)`
-Located at `/courses.html`. Grid of 8 course cards with map image, TA record count, battle count, course record holder. CollectionPage + BreadcrumbList JSON-LD.
+### Courses index — `generateCoursesIndex(taRecords, matches)`
+Located at `/courses.html`. Grid of 8 course cards with map image, TA record count, battle count (published only), course record holder. CollectionPage + BreadcrumbList JSON-LD.
 
 ### Key constants in build.js
 ```js
@@ -160,9 +189,11 @@ const COURSE_ORDER  = ['Myogi','Usui','Akagi','Akina','Irohazaka','Akina Snow','
 const COURSE_IMAGES = { /* course name → Courses/ image path */ };
 const DIR_ORDER     = ['Downhill','Uphill','Counter-Clockwise','Counter Clockwise','Clockwise','Outbound','Inbound'];
 const COND_ORDER    = ['Dry','Wet'];
-const BATTLE_LOG_GID = '1322076132';
+const ELO_CALC_GID  = BattleEngine.ELO_CALC_GID;   // '20260409'
 ```
 `COURSE_ORDER` must be kept in sync with `main.js`.
+
+The build log prints `Battles: N published, M awaiting upload (excluded)` — if M is 0 when you know videos are scheduled, the gate isn't seeing the future rows and something changed in the sheet.
 
 ## Videos page (js/videos.js)
 - `?player=NAME` and `?course=NAME` URL params pre-filter the grid on load

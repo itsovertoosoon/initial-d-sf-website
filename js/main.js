@@ -5,9 +5,13 @@
 /* ── CONFIG ──────────────────────────────────────────────────── */
 const SHEET_ID               = '1MaofC1e4XlJ3XtKAokq34Q3q5vTziuz8NNPS7tHZD3E';
 const LEADERBOARD_GID        = '0';          // Time Trial Records tab
-const BATTLE_STATS_SHEET     = 'Racers by Course';  // Battle record by course
-const HEAD_TO_HEAD_SHEET     = 'Head_to_Head';       // Battle record head-to-head
-const BATTLE_LEADERBOARD_SHEET = 'Battle Records by Racer'; // ELO leaderboard (rows 1-3 are titles; data starts row 4)
+const ELO_CALC_GID           = BattleEngine.ELO_CALC_GID; // per-match Elo chain — see js/battle-engine.js
+
+// Every battle stat on the site (ELO, W/L, streak, last active, by-course, head
+// to head) is derived from the Elo calc tab, filtered to matches whose video is
+// already public. The Apps Script aggregate sheets ('Battle Records by Racer',
+// 'Racers by Course', 'Head_to_Head') are no longer read: they count every
+// logged row including scheduled uploads, which spoils them.
 
 /* ── COURSE ORDER (canonical game sequence) ───────────────── */
 const COURSE_ORDER = ['Myogi', 'Usui', 'Akagi', 'Akina', 'Irohazaka', 'Akina Snow', 'Happogahara', 'Shomaru', 'Tsuchisaka'];
@@ -425,23 +429,51 @@ function initRacers() {
 let homeVideos = [];          // populated by initVideos() for use in detail panel
 let activeRacerName = null;
 
-// Single promise that fetches + caches the two battle detail sheets
-let _detailSheetsPromise = null;
-let _battleStatsCache    = null;
-let _headToHeadCache     = null;
+/* ── Battle data (publish-gated) ───────────────────────────── */
+// One fetch of the Elo calc tab feeds the ELO leaderboard, the racer detail
+// panel's head-to-head and by-course tables, and the hero ELO leader stat.
+// Matches whose video hasn't gone live yet are dropped before anything is
+// derived, so the board never reveals a scheduled upload's result.
+let _battleDataPromise = null;
+let _battleData        = null;   // { standings, byCourse, headToHead, withheldCount }
 
-function loadDetailSheets() {
-    if (_detailSheetsPromise) return _detailSheetsPromise;
+function loadBattleData() {
+    if (_battleDataPromise) return _battleDataPromise;
 
-    _detailSheetsPromise = Promise.all([
-        fetchSheetData(BATTLE_STATS_SHEET),
-        fetchSheetData(HEAD_TO_HEAD_SHEET),
-    ]).then(([bs, h2h]) => {
-        _battleStatsCache = parseBattleStats(bs);
-        _headToHeadCache  = parseHeadToHead(h2h);
+    _battleDataPromise = Promise.all([
+        fetchSheetData(ELO_CALC_GID),
+        // Resolve rather than reject — a dead YouTube fetch must not take the
+        // leaderboard down with it, it just falls back to date-only gating.
+        loadVideosOnce().catch(() => null),
+    ]).then(([rows, ytResult]) => {
+        const all = BattleEngine.parseMatches(rows);
+
+        const outOfOrder = BattleEngine.checkChainOrder(all);
+        if (outOfOrder.length) {
+            console.warn('[battle] Elo calc tab is not date-ascending at rows ' +
+                outOfOrder.join(', ') + ' — ratings may read from an incomplete chain.');
+        }
+
+        const videos   = ytResult && ytResult.videos ? ytResult.videos : [];
+        const { published, withheld } = BattleEngine.splitByPublished(all, {
+            publishedIds: BattleEngine.publishedIdsFrom(videos),
+        });
+
+        if (withheld.length) {
+            console.info(`[battle] ${published.length} published matches shown, ` +
+                `${withheld.length} held back until their videos go live.`);
+        }
+
+        _battleData = {
+            standings    : BattleEngine.deriveStandings(published),
+            byCourse     : BattleEngine.deriveByCourse(published, COURSE_ORDER),
+            headToHead   : BattleEngine.deriveHeadToHead(published),
+            withheldCount: withheld.length,
+        };
+        return _battleData;
     });
 
-    return _detailSheetsPromise;
+    return _battleDataPromise;
 }
 
 /* ── TA records from allRecords (already loaded) ──────────── */
@@ -494,91 +526,8 @@ function getPlayerTARecords(playerName) {
 
 /* ── Sheet parsers ─────────────────────────────────────────── */
 
-// All three sheets share a "grouped" structure:
-//   header row: first cell has content (e.g. "JJ — 14W 4L"), all other cells null
-//   data rows:  multiple cells have values
-//
-// We use Object.values(row) positionally so column names don't matter.
-
 // Labels that appear as subheader rows inside player blocks — must be skipped
 const SUBHEADER_LABELS = /^(course|opponent|player|racer|name)$/i;
-
-function parseBattleStats(rawRows) {
-    // Returns { 'JJ': { overall: '14W 4L (77.8% overall)', courses: [...] } }
-    const result = {};
-    let cur = null;
-
-    rawRows.forEach(row => {
-        const vals     = Object.values(row);
-        const first    = vals[0];
-        const restNull = vals.slice(1).every(v => v == null || v === '');
-
-        if (first == null) return; // blank row
-
-        const str = String(first).trim();
-
-        // Skip column-label rows ("Course", "Opponent", etc.) — regardless of
-        // whether other cells are filled (e.g. "Course","Wins","Losses",...)
-        if (SUBHEADER_LABELS.test(str)) return;
-
-        if (restNull) {
-            // Player header — "JJ — 14W 4L (77.8% overall)"
-            const m       = str.match(/^(.+?)\s*[—\-–]\s*(.+)/);
-            const name    = m ? m[1].trim() : str;
-            const overall = m ? m[2].trim() : '';
-            cur = name;
-            result[name] = { overall, courses: [] };
-        } else if (cur && vals.some(v => v != null && v !== '')) {
-            result[cur].courses.push({
-                name:   vals[0],
-                wins:   vals[1],
-                losses: vals[2],
-                total:  vals[3],
-                winPct: vals[4],
-            });
-        }
-    });
-
-    return result;
-}
-
-function parseHeadToHead(rawRows) {
-    // Returns { 'JJ': [{ opponent, wins, losses, total, winPct }] }
-    const result = {};
-    let cur = null;
-
-    rawRows.forEach(row => {
-        const vals     = Object.values(row);
-        const first    = vals[0];
-        const restNull = vals.slice(1).every(v => v == null || v === '');
-
-        if (first == null) return; // blank row
-
-        const str = String(first).trim();
-
-        // Skip column-label rows ("Course", "Opponent", etc.) — regardless of
-        // whether other cells are filled (e.g. "Opponent","Wins","Losses",...)
-        if (SUBHEADER_LABELS.test(str)) return;
-
-        if (restNull) {
-            // Player header — "JJ — 14W 4L (77.8% overall)"
-            const m    = str.match(/^(.+?)\s*[—\-–]/);
-            const name = m ? m[1].trim() : str;
-            cur = name;
-            if (!result[name]) result[name] = [];
-        } else if (cur && vals.some(v => v != null && v !== '')) {
-            result[cur].push({
-                opponent: vals[0],
-                wins:     vals[1],
-                losses:   vals[2],
-                total:    vals[3],
-                winPct:   vals[4],
-            });
-        }
-    });
-
-    return result;
-}
 
 function parseCourseRecords(rawRows) {
     // Returns { 'DUSK': [{ car, records: [{ rank, map, dir, time, cond }] }] }
@@ -788,10 +737,10 @@ async function openRacerDetail(playerName) {
     history.replaceState({ racer: playerName }, '', `?${_openParams.toString()}`);
 
     // Wait for both data sources in parallel — both are no-ops after first load
-    // (loadDetailSheets and _leaderboardPromise cache their results).
+    // (loadBattleData and _leaderboardPromise cache their results).
     try {
         await Promise.all([
-            loadDetailSheets(),
+            loadBattleData(),
             _leaderboardPromise,   // guarantees allRecords is populated before we render TA records
         ]);
     } catch {
@@ -818,8 +767,8 @@ async function openRacerDetail(playerName) {
 
 function renderRacerDetail(playerName, container) {
     const racer    = RACERS.find(r => r.name === playerName);
-    const battleSt = findInCache(_battleStatsCache, playerName);
-    const h2h      = findInCache(_headToHeadCache,  playerName);
+    const battleSt = findInCache(_battleData?.byCourse,   playerName);
+    const h2h      = findInCache(_battleData?.headToHead, playerName);
     // TA records come directly from allRecords — already loaded, always accurate
     const taByCar  = getPlayerTARecords(playerName);
 
@@ -1082,165 +1031,96 @@ async function initBattleLeaderboard() {
     const container = document.getElementById('battle-leaderboard');
     if (!container) return;
 
-    // range='A4:I' skips the title rows (1–3) so row 4 is treated as the header
-    const rows = await fetchSheetData(BATTLE_LEADERBOARD_SHEET, 'A4:I');
+    const { standings, withheldCount } = await loadBattleData();
 
-    if (!rows.length) {
+    if (!standings.length) {
         container.innerHTML = `<p style="color:var(--muted);font-family:var(--font-mono);padding:2rem 0">
             No battle data available.</p>`;
         return;
     }
 
-    const allCols = Object.keys(rows[0]);
+    // Hero stat strip — current ELO leader
+    updateHeroStats({ elo1: String(standings[0].racer).toUpperCase() });
 
-    // ── Column classifiers ──────────────────────────────────
-    const isRank    = k => /^rank$/i.test(k.trim());
-    const isStatus  = k => /\bstatus\b/i.test(k);
-    const isHelper  = k => /^Helper_/i.test(k) || /helper|formula|calc|^_|\(\)/i.test(k) || k.trim() === '';
-    const isPlayer  = k => /^(player|identity|racer|name|tag)$/i.test(k.trim());
-    const isElo     = k => /^elo$/i.test(k.trim()) || /\belo\b/i.test(k);
-    const isWinPct  = k => /win.*(pct|%|rate)|%.*win/i.test(k);
-    const isDate    = k => /last.*(active|played|seen)|date/i.test(k);
-
-    // ── Merge two-column layout ─────────────────────────────
-    // The sheet stores overflow players in Helper_* columns to work around
-    // gviz column limits. Extract them into proper row objects and merge.
-    const helperCols  = allCols.filter(k => /^Helper_/i.test(k));
-    const primaryCols = allCols.filter(k => !/^Helper_/i.test(k) && k.trim() !== '');
-
-    // Map each Helper_X column to its matching primary column via classifiers
-    const helperToPrimary = {};
-    helperCols.forEach(hk => {
-        const base  = hk.replace(/^Helper_/i, '');
-        const match = primaryCols.find(pk =>
-            (isPlayer(base) && isPlayer(pk))  ||
-            (isElo(base)    && isElo(pk))     ||
-            (isWinPct(base) && isWinPct(pk))  ||
-            (isDate(base)   && isDate(pk))    ||
-            (isStatus(base) && isStatus(pk))  ||
-            pk.replace(/[\s_]/g, '').toLowerCase() === base.replace(/[\s_]/g, '').toLowerCase()
-        );
-        if (match) helperToPrimary[hk] = match;
-    });
-
-    const playerKey = primaryCols.find(isPlayer);
-
-    // Pull overflow players out of Helper_* columns into proper row objects
-    const extraRows = [];
-    rows.forEach(r => {
-        const newRow = {};
-        Object.entries(helperToPrimary).forEach(([hk, pk]) => {
-            if (r[hk] != null && r[hk] !== '') newRow[pk] = r[hk];
-        });
-        if (playerKey && newRow[playerKey]) extraRows.push(newRow);
-    });
-
-    // Main rows = rows with a primary player; append overflow rows
-    const cleanRows = [
-        ...rows.filter(r => playerKey && r[playerKey] != null && r[playerKey] !== ''),
-        ...extraRows,
+    const COLS = [
+        { label: 'RACER',       cell: r => playerCell(r.racer) },
+        { label: 'ELO',         cell: r => `<span class="elo-value">${r.elo == null ? '—' : r.elo.toFixed(2)}</span>`, accent: true },
+        { label: 'W',           cell: r => `<span style="color:var(--green)">${r.wins}</span>` },
+        { label: 'L',           cell: r => `<span style="color:var(--red)">${r.losses}</span>` },
+        { label: 'MATCHES',     cell: r => r.matches },
+        { label: 'WIN %',       cell: r => `<span style="color:var(--muted)">${(r.winPct * 100).toFixed(1)}%</span>` },
+        { label: 'STREAK',      cell: r => streakCell(r.streak) },
+        { label: 'LAST ACTIVE', cell: r => `<span style="color:var(--muted)">${fmtDate(r.lastActive)}</span>` },
     ];
 
-    // Remove rank (we generate our own), status, helper, and always-empty columns
-    const displayCols = allCols.filter(c =>
-        !isRank(c) && !isStatus(c) && !isHelper(c) &&
-        cleanRows.some(r => r[c] != null && r[c] !== '')
-    );
-
-    const eloKey = displayCols.find(isElo);
-
-    // Sort by ELO descending
-    if (eloKey) {
-        cleanRows.sort((a, b) => (Number(b[eloKey]) || 0) - (Number(a[eloKey]) || 0));
+    // Roster match is normalised so sheet variants like ":V" still resolve to
+    // ":v"; guests (MJ, KAY, …) have no profile page so they stay plain text.
+    function playerCell(name) {
+        const known = RACERS.find(rc =>
+            rc.name === name || normalizeName(rc.name) === normalizeName(name));
+        return known
+            ? `<button class="battle-player-link" data-racer="${escHtml(known.name)}">${escHtml(known.name)}</button>`
+            : `<strong>${escHtml(name) || '—'}</strong>`;
     }
 
-    // Update hero stat strip with current ELO leader
-    if (cleanRows.length && playerKey && cleanRows[0][playerKey]) {
-        updateHeroStats({ elo1: String(cleanRows[0][playerKey]).toUpperCase() });
+    function streakCell(s) {
+        if (!s) return '—';
+        const colour = s[0] === 'W' ? 'var(--green)' : 'var(--red)';
+        return `<span style="color:${colour}">${escHtml(s)}</span>`;
     }
 
-    // ── Cell formatters ─────────────────────────────────────
-    function fmtDate(val) {
-        if (val == null || val === '') return '—';
-        const s = String(val);
-        // gviz returns dates as "Date(YYYY,M,D)"
-        const m = s.match(/^Date\((\d+),(\d+),(\d+)\)/);
-        if (m) {
-            return new Date(+m[1], +m[2], +m[3])
-                .toLocaleDateString('en-US', {year:'numeric', month:'short', day:'numeric'});
-        }
-        // Strip any "DATE (XX)" style wrapper if it came through as a string
-        const stripped = s.replace(/^date\s*\(\s*/i, '').replace(/\)\s*$/i, '').trim();
-        return stripped || s;
+    function fmtDate(d) {
+        if (!d) return '—';
+        return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     }
 
-    function fmtPctCell(val) {
-        if (val == null || val === '') return '—';
-        const n = typeof val === 'number' ? val : parseFloat(String(val).replace('%', '').trim());
-        if (isNaN(n)) return String(val);
-        const pct = n > 0 && n <= 1 ? n * 100 : n; // handle decimal (0.778) or percent (77.8)
-        return pct.toFixed(1) + '%';
-    }
-
-    function renderCell(col, val) {
-        if (isElo(col))    return `<span class="elo-value">${escHtml(val ?? '—')}</span>`;
-        if (isWinPct(col)) return escHtml(fmtPctCell(val));
-        if (isDate(col))   return escHtml(fmtDate(val));
-        return escHtml(val ?? '—');
-    }
-
-    // ── Render ──────────────────────────────────────────────
     container.innerHTML = `
         <table class="leaderboard-table">
             <thead>
                 <tr>
                     <th>RANK</th>
-                    ${displayCols.map(c =>
-                        `<th${isElo(c) ? ' style="color:var(--orange)"' : ''}>${String(c).toUpperCase()}</th>`
+                    ${COLS.map(c =>
+                        `<th${c.accent ? ' style="color:var(--orange)"' : ''}>${c.label}</th>`
                     ).join('')}
                 </tr>
             </thead>
             <tbody>
-                ${cleanRows.map((r, i) => `
+                ${standings.map(r => `
                 <tr>
-                    <td><span class="rank-badge rank-${i + 1}">${i + 1}</span></td>
-                    ${displayCols.map(c => {
-                        const val = r[c];
-
-                        // Player column — link to racer profile if known.
-                        // Normalised match so sheet variants like ":V" still hit ":v";
-                        // the canonical RACERS name is what gets passed to openRacerDetail.
-                        if (c === playerKey) {
-                            const name  = String(val ?? '');
-                            const known = RACERS.find(rc =>
-                                rc.name === name || normalizeName(rc.name) === normalizeName(name));
-                            const inner = known
-                                ? `<button class="battle-player-link" data-racer="${escHtml(known.name)}">${escHtml(known.name)}</button>`
-                                : `<strong>${escHtml(name) || '—'}</strong>`;
-                            return `<td>${inner}</td>`;
-                        }
-
-                        return `<td>${renderCell(c, val)}</td>`;
-                    }).join('')}
+                    <td><span class="rank-badge rank-${r.rank}">${r.rank}</span></td>
+                    ${COLS.map(c => `<td>${c.cell(r)}</td>`).join('')}
                 </tr>`).join('')}
             </tbody>
-        </table>`;
+        </table>
+        ${withheldCount
+            ? `<p class="battle-pending-note">▸ Standings are current as of the latest published video.
+                   ${withheldCount} logged ${withheldCount === 1 ? 'battle is' : 'battles are'}
+                   waiting on ${withheldCount === 1 ? 'its' : 'their'} upload and ${withheldCount === 1 ? 'is' : 'are'} not counted yet.</p>`
+            : ''}`;
 
     container.querySelectorAll('.battle-player-link[data-racer]').forEach(btn => {
         btn.addEventListener('click', () => openRacerDetail(btn.dataset.racer));
     });
 }
-
 /* ════════════════════════════════════════════════════════════
    VIDEOS — homepage preview (6 most recent, two rows of 3)
    ════════════════════════════════════════════════════════════ */
 const HOME_VIDEO_COUNT = 6;
 
+// The video preview and the battle publish gate both need the channel's upload
+// list. Share one call so a cold localStorage cache doesn't cost two API round
+// trips (and two hits against the YouTube quota) per page load.
+let _videosPromise = null;
+function loadVideosOnce() {
+    if (!_videosPromise) _videosPromise = loadVideos();
+    return _videosPromise;
+}
+
 async function initVideos() {
     const grid = document.getElementById('video-grid');
     grid.innerHTML = '<div class="loading">LOADING VIDEOS...</div>';
 
-    const result = await loadVideos();
+    const result = await loadVideosOnce();
 
     if (result.status === 'unconfigured') {
         grid.innerHTML = `
