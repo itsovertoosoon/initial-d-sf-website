@@ -65,9 +65,25 @@ function fetchSheetData(gid) {
         const script    = document.createElement('script');
         script.id       = cb;
         script.onerror  = () => { clearTimeout(timer); cleanup(); resolve([]); };
+        // NOTE: a filtering proxy that answers with a block page fires `load`, not
+        // `error`, so the timeout above is the only thing that ends that case.
         script.src      = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq` +
                           `?tqx=out:json;responseHandler:${cb}&gid=${gid}`;
         document.head.appendChild(script);
+    });
+}
+
+// Networks that block docs.google.com (a common corporate rule) would otherwise
+// leave every video uncategorised. build.js mirrors the same sheet to a
+// same-origin file; fall back to it when the live fetch comes back empty.
+// Kept deliberately parallel to getSheetRows() in js/main.js.
+function fetchSheetRowsWithFallback(gid) {
+    return fetchSheetData(gid).then(rows => {
+        if (rows.length) return rows;
+        return fetch('/data/snapshot.json', { cache: 'no-cache' })
+            .then(r => (r.ok ? r.json() : null))
+            .then(s => s?.sheets?.[String(gid)] || [])
+            .catch(() => []);
     });
 }
 
@@ -383,7 +399,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Fetch YouTube videos and battle log in parallel
     const [ytResult, battles] = await Promise.all([
         loadVideos(),
-        fetchSheetData(BATTLE_LOG_GID),
+        fetchSheetRowsWithFallback(BATTLE_LOG_GID),
     ]);
 
     battleRecords = battles;

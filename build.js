@@ -23,7 +23,14 @@ const BattleEngine = require('./js/battle-engine.js');
 const SHEET_ID       = '1MaofC1e4XlJ3XtKAokq34Q3q5vTziuz8NNPS7tHZD3E';
 const SITE_URL       = 'https://initialdsanfrancisco.com';
 const COURSE_ORDER   = ['Myogi', 'Usui', 'Akagi', 'Akina', 'Irohazaka', 'Akina Snow', 'Happogahara', 'Shomaru', 'Tsuchisaka'];
-const ELO_CALC_GID   = BattleEngine.ELO_CALC_GID;
+const ELO_CALC_GID    = BattleEngine.ELO_CALC_GID;
+const LEADERBOARD_GID = '0';           // Time Trial Records tab
+const BATTLE_LOG_GID  = '1322076132';  // per-battle log, read client-side by js/videos.js
+
+// Sheets mirrored into data/snapshot.json so the site still renders stats when a
+// visitor's network blocks docs.google.com (corporate proxies commonly do).
+// Keys must match the refs js/main.js and js/videos.js pass to fetchSheetData().
+const SNAPSHOT_SHEETS = [LEADERBOARD_GID, ELO_CALC_GID, BATTLE_LOG_GID];
 
 const COURSE_IMAGES = {
     'Myogi':       'Courses/Myogi_map.webp',
@@ -1152,6 +1159,64 @@ function taPlayerName(row) {
 /* ══════════════════════════════════════════════════════════════════════════
    MAIN
 ══════════════════════════════════════════════════════════════════════════ */
+/* -- Static data snapshot ------------------------------------------------- */
+// The site reads every stat from docs.google.com at runtime via JSONP. Networks
+// that block Google Workspace (a common corporate DLP rule) therefore render the
+// whole site statless. Mirroring the sheets to a same-origin JSON file gives the
+// client something to fall back to that no proxy can intercept.
+function writeSnapshot(entries) {
+    const file = path.join(__dirname, 'data', 'snapshot.json');
+
+    let previous = {};
+    try {
+        previous = JSON.parse(fs.readFileSync(file, 'utf8')).sheets || {};
+    } catch (e) { /* no snapshot yet, or it was never committed */ }
+
+    // Sheets carry the spreadsheet's full used range, so trailing columns that are
+    // empty in every row (M..AE on the TA tab) ride along as pure padding. Nothing
+    // can read a column that is null in every row, so drop them.
+    const prune = rows => {
+        const live = new Set();
+        for (const row of rows) {
+            for (const k in row) {
+                const v = row[k];
+                if (v !== null && v !== undefined && v !== '') live.add(k);
+            }
+        }
+        return rows.map(row => {
+            const out = {};
+            for (const k of live) if (k in row) out[k] = row[k];
+            return out;
+        });
+    };
+
+    const sheets = {};
+    const stale  = [];
+    for (const { gid, rows } of entries) {
+        if (rows && rows.length) { sheets[gid] = prune(rows); continue; }
+        // Never let a failed fetch blank out a good snapshot. A transient Google
+        // hiccup during one deploy would otherwise ship an empty fallback to
+        // precisely the visitors who depend on it.
+        if (previous[gid] && previous[gid].length) {
+            sheets[gid] = previous[gid];
+            stale.push(gid);
+        }
+    }
+
+    if (!Object.keys(sheets).length) {
+        console.warn('[build] snapshot: no sheet data available, leaving data/snapshot.json untouched');
+        return;
+    }
+    if (stale.length) {
+        console.warn(`[build] snapshot: kept previous rows for gid ${stale.join(', ')} (fetch failed or empty)`);
+    }
+
+    fs.writeFileSync(file, JSON.stringify({ generated: new Date().toISOString(), sheets }));
+    const counts = Object.entries(sheets).map(([g, r]) => `${g}:${r.length}`).join(' ');
+    const kb     = (fs.statSync(file).size / 1024).toFixed(0);
+    console.log(`[build] data/snapshot.json ${kb} KB (${counts})`);
+}
+
 async function main() {
     console.log('[build] Fetching data sources…');
 
@@ -1160,22 +1225,30 @@ async function main() {
     const racers = readRacers();
     console.log(`[build] RACERS array: ${racers.length} players`);
 
-    const sheetLabels = ['TA records', 'Elo calc tab', 'YouTube'];
+    // The first SNAPSHOT_SHEETS.length entries must stay aligned with
+    // SNAPSHOT_SHEETS so writeSnapshot() can pair results back to their gid.
+    const sheetLabels = ['TA records', 'Elo calc tab', 'battle log', 'YouTube'];
     const results = await Promise.allSettled([
-        fetchSheet('0'),
+        fetchSheet(LEADERBOARD_GID),
         fetchSheet(ELO_CALC_GID),
+        fetchSheet(BATTLE_LOG_GID),
         (apiKey && channelId)
             ? fetchYouTubeVideos(apiKey, channelId)
             : Promise.resolve([]),
     ]);
 
-    const [taRecords, calcRows, ytVideos] = results.map((r, i) => {
+    const [taRecords, calcRows, battleLogRows, ytVideos] = results.map((r, i) => {
         if (r.status === 'rejected') {
             console.warn(`[build] ${sheetLabels[i]} fetch failed: ${r.reason?.message ?? r.reason}`);
             return [];
         }
         return r.value;
     });
+
+    writeSnapshot(SNAPSHOT_SHEETS.map((gid, i) => ({
+        gid,
+        rows: results[i].status === 'fulfilled' ? results[i].value : null,
+    })));
 
     console.log(`[build] TA: ${taRecords.length} rows, Elo calc: ${calcRows.length} matches, Videos: ${ytVideos.length}`);
 

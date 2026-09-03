@@ -13,8 +13,47 @@ Netlify runs `node build.js` before serving. The script fetches Google Sheets + 
 - Generates `/courses/[slug].html` — one static page per course
 - Generates `/courses.html` — course directory index
 - Regenerates `sitemap.xml` with all pages
+- Writes `data/snapshot.json` — a same-origin mirror of the sheets (see below)
 
 **Do not run `node build.js` locally and commit the result** — the markers in `index.html` are the source of truth; the injected content is generated fresh each deploy.
+
+## Offline / blocked-network fallback
+
+Every stat is fetched client-side from `docs.google.com`. Corporate networks
+routinely block Google Workspace domains as a data-exfiltration control, which
+used to leave the whole site rendering no numbers at all — after a silent 10s
+spinner, followed by error copy that wrongly blamed the sheet's sharing settings.
+
+`build.js` therefore mirrors all three sheets into **`data/snapshot.json`**
+(`{ generated, sheets: { [gid]: rows } }`), served from our own origin where no
+proxy sits in the way. `getSheetRows()` in `js/main.js` races the live JSONP
+fetch against the snapshot:
+
+- Whichever answers first paints. The snapshot usually wins (same origin, no
+  round trip to Google), so stats now appear immediately rather than after a
+  round trip — this is a speed win for *every* visitor, not just blocked ones.
+- Live data always wins in the end: when it lands after the snapshot, the
+  `onUpgrade` callback re-renders. `applyRecords()` skips the re-render when the
+  rows are identical, so the common case does not flicker or reset filters.
+- While any section is showing snapshot data, a `.data-source-notice` banner
+  appears under the hero stats naming the snapshot date.
+- If both fail, the UI says the network may be blocking `docs.google.com` and
+  fires a `data_load_failure` GA event.
+
+**Gotchas**
+- `fetchSheetData()` resolves `{ ok, rows, reason }` and **never rejects**. `ok:false`
+  (request did not complete) is deliberately distinct from `ok:true` with zero rows
+  (sheet really is empty). Never conflate them — doing so is what made the racer
+  modal claim "No time attack records on file" during an outage, which reads as
+  fact rather than failure.
+- A filtering proxy that returns a block page fires the script's `load` event, not
+  `error`, so `SHEET_TIMEOUT_MS` is the only thing that ends that case.
+- `writeSnapshot()` keeps the previous rows for any sheet whose build-time fetch
+  failed or came back empty, so one bad deploy cannot ship an empty fallback.
+  Keep `data/snapshot.json` committed — Netlify builds from a fresh clone, so the
+  committed copy is the floor that guard falls back to.
+- `SNAPSHOT_SHEETS` must stay aligned with the first N entries of the
+  `Promise.allSettled` array in `main()`; `writeSnapshot` pairs them by index.
 
 ## Tech stack
 - Plain HTML / CSS / JS — no framework, no bundler
@@ -33,6 +72,7 @@ js/battle-engine.js — shared (browser + build.js): publish gate + all battle s
 js/youtube.js       — YouTube API fetch + localStorage cache (1hr TTL)
 js/videos.js        — videos page logic (category/course/player filters + URL params)
 data/videos.js      — YouTube API key + channel ID config
+data/snapshot.json  — BUILD-GENERATED; same-origin mirror of the sheets, used as fallback
 racers/             — BUILD-GENERATED static racer profile pages
 courses/            — BUILD-GENERATED static course pages
 Headshots/          — player headshot images (JPG/PNG)

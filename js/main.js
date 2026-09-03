@@ -89,9 +89,14 @@ function groupBy(arr, key) {
     }, {});
 }
 
-/* ── GOOGLE SHEETS JSONP LOADER ───────────────────────────── */
+/* ── GOOGLE SHEETS JSONP LOADER ───────────────── */
 // Accepts either a numeric GID (string/number) or a sheet name string.
 // Optional range (e.g. 'A4:I') lets you skip title rows by starting at the real header row.
+// Resolves { ok, rows, reason } — never rejects. `ok:false` means the request did
+// not complete; it is deliberately distinct from `ok:true` with zero rows, which
+// means the sheet really is empty. Callers must not conflate the two.
+const SHEET_TIMEOUT_MS = 10000;
+
 function fetchSheetData(sheetRef, range = '') {
     return new Promise((resolve) => {
         const cb = '_gviz_' + Math.random().toString(36).slice(2);
@@ -103,16 +108,20 @@ function fetchSheetData(sheetRef, range = '') {
 
         const cleanup = () => { delete window[cb]; document.getElementById(cb)?.remove(); };
 
+        // A filtering proxy that answers with a block page fires `load`, not
+        // `error`, and never calls the callback — so this timeout is the only
+        // thing that ends the request in that case.
         const timer = setTimeout(() => {
             cleanup();
             console.error('Sheet fetch timed out for ' + param);
-            resolve([]);
-        }, 10000);
+            resolve({ ok: false, rows: [], reason: 'timeout' });
+        }, SHEET_TIMEOUT_MS);
 
         window[cb] = function(response) {
             clearTimeout(timer);
             cleanup();
-            resolve(response?.table ? parseGvizTable(response.table) : []);
+            if (!response?.table) { resolve({ ok: false, rows: [], reason: 'malformed' }); return; }
+            resolve({ ok: true, rows: parseGvizTable(response.table) });
         };
 
         const script   = document.createElement('script');
@@ -121,11 +130,101 @@ function fetchSheetData(sheetRef, range = '') {
             clearTimeout(timer);
             cleanup();
             console.error('Sheet fetch failed for ' + param);
-            resolve([]);
+            resolve({ ok: false, rows: [], reason: 'blocked' });
         };
         script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq` +
                      `?tqx=out:json;responseHandler:${cb}&${param}${rangeParam}`;
         document.head.appendChild(script);
+    });
+}
+
+/* ── SNAPSHOT FALLBACK ──────────────────────── */
+// Every stat here comes from docs.google.com, which corporate networks routinely
+// block as a data-exfiltration control — leaving the site rendering no numbers at
+// all. build.js mirrors the same sheets into data/snapshot.json, served from our
+// own origin where no proxy sits in the way. getSheetRows() races the two: the
+// snapshot almost always answers first (same origin, no round trip to Google),
+// so stats paint immediately, and live data replaces them the moment it lands.
+let _snapshotPromise = null;
+
+function loadSnapshot() {
+    if (_snapshotPromise) return _snapshotPromise;
+    _snapshotPromise = fetch('/data/snapshot.json', { cache: 'no-cache' })
+        .then(r => (r.ok ? r.json() : null))
+        .catch(() => null);
+    return _snapshotPromise;
+}
+
+// Sheet refs currently painted from the snapshot rather than live data.
+const _snapshotRefs    = new Set();
+let   _snapshotStamp   = null;
+
+function markSource(ref, source, generated) {
+    if (source === 'snapshot') {
+        _snapshotRefs.add(String(ref));
+        _snapshotStamp = generated || _snapshotStamp;
+    } else {
+        _snapshotRefs.delete(String(ref));
+    }
+    renderDataNotice();
+}
+
+function renderDataNotice() {
+    const anchor = document.getElementById('hero-stats');
+    if (!anchor) return;
+    let el = document.getElementById('data-source-notice');
+
+    if (!_snapshotRefs.size) { el?.remove(); return; }
+
+    if (!el) {
+        el = document.createElement('p');
+        el.id        = 'data-source-notice';
+        el.className = 'data-source-notice';
+        el.setAttribute('role', 'status');
+        anchor.insertAdjacentElement('afterend', el);
+    }
+    const when = _snapshotStamp
+        ? new Date(_snapshotStamp).toLocaleDateString('en-US',
+              { year: 'numeric', month: 'short', day: 'numeric' })
+        : null;
+    el.textContent = '▸ Showing saved data' + (when ? ` from ${when}` : '') +
+        ' — the live connection to Google Sheets is unavailable on this network.';
+}
+
+// Resolves { rows, source } where source is 'live' | 'snapshot' | 'failed'.
+// When the snapshot wins the race, onUpgrade(rows) fires later with live rows.
+function getSheetRows(ref, { range = '', onUpgrade } = {}) {
+    const live = fetchSheetData(ref, range);
+    const snap = loadSnapshot();
+
+    return new Promise(resolve => {
+        let settled = false;
+        const settle = v => { if (!settled) { settled = true; resolve(v); } };
+
+        live.then(res => {
+            // An empty-but-successful response must not blank out good snapshot
+            // rows; the Promise.all below settles that case instead.
+            if (!res.ok || !res.rows.length) return;
+            markSource(ref, 'live');
+            if (settled) onUpgrade?.(res.rows);
+            else settle({ rows: res.rows, source: 'live' });
+        });
+
+        snap.then(s => {
+            const rows = s?.sheets?.[String(ref)];
+            if (settled || !rows?.length) return;
+            markSource(ref, 'snapshot', s.generated);
+            settle({ rows, source: 'snapshot', generated: s.generated });
+        });
+
+        Promise.all([live, snap]).then(([res]) => {
+            if (settled) return;
+            if (!res.ok) {
+                console.error(`[data] sheet ${ref} unreachable (${res.reason}) with no snapshot to fall back on`);
+                trackEvent('data_load_failure', { sheet: String(ref), reason: res.reason });
+            }
+            settle({ rows: res.rows, source: res.ok ? 'live' : 'failed' });
+        });
     });
 }
 
@@ -154,16 +253,42 @@ let activeTrack = null;
 let activeDir   = 'all';
 let activeCond  = 'all';
 
-async function initLeaderboard() {
-    allRecords = await fetchSheetData(LEADERBOARD_GID);
+let _leaderboardFailed = false;
 
-    if (!allRecords.length) {
-        document.getElementById('leaderboard').innerHTML =
-            `<p style="color:var(--muted);font-family:var(--font-mono);padding:2rem 0">
-                Could not load records. Make sure the Google Sheet is published to the web.
-             </p>`;
+const LEADERBOARD_MSG = msg =>
+    `<p style="color:var(--muted);font-family:var(--font-mono);padding:2rem 0">${msg}</p>`;
+
+async function initLeaderboard() {
+    const res = await getSheetRows(LEADERBOARD_GID, {
+        onUpgrade: rows => applyRecords(rows, { isUpgrade: true }),
+    });
+
+    // 'failed' and an empty sheet are different problems and must read
+    // differently — the old copy blamed the sheet's sharing settings for what is
+    // almost always the visitor's network blocking docs.google.com.
+    if (res.source === 'failed') {
+        _leaderboardFailed = true;
+        document.getElementById('leaderboard').innerHTML = LEADERBOARD_MSG(
+            'Could not reach the records data. This network may be blocking ' +
+            'docs.google.com — try another connection.');
         return;
     }
+    if (!res.rows.length) {
+        document.getElementById('leaderboard').innerHTML =
+            LEADERBOARD_MSG('No time attack records found.');
+        return;
+    }
+
+    applyRecords(res.rows);
+}
+
+function applyRecords(rows, { isUpgrade = false } = {}) {
+    // Live data usually matches the snapshot exactly; re-rendering identical rows
+    // would only flicker the table and drop the visitor's filter selection.
+    if (isUpgrade && JSON.stringify(rows) === JSON.stringify(allRecords)) return;
+
+    const prevTrack = activeTrack;
+    allRecords = rows;
 
     updateHeroStats({ records: allRecords.length });
 
@@ -174,11 +299,23 @@ async function initLeaderboard() {
     ).size;
     updateHeroStats({ racers: distinctRacers });
 
-    const tracks = [...new Set(allRecords.map(r => r['Map']).filter(Boolean))];
-    buildTrackTabs(tracks);
+    const tracks   = [...new Set(allRecords.map(r => r['Map']).filter(Boolean))];
+    const selected = prevTrack && tracks.includes(prevTrack) ? prevTrack : tracks[0];
+    buildTrackTabs(tracks, selected);
 
     // Fire-and-forget: re-renders leaderboard footer when WR data arrives
     loadWorldRecords();
+
+    wireLeaderboardFilters();
+    showTrack(selected);
+}
+
+// Delegated once onto containers that outlive their contents, so an upgrade
+// re-render cannot double-bind them.
+let _filtersWired = false;
+function wireLeaderboardFilters() {
+    if (_filtersWired) return;
+    _filtersWired = true;
 
     document.getElementById('direction-tabs').addEventListener('click', e => {
         const btn = e.target.closest('.sub-tab');
@@ -200,8 +337,6 @@ async function initLeaderboard() {
         btn.classList.add('active');
         filterAndRender();
     });
-
-    showTrack(tracks[0]);
 }
 
 // Returns first direction found in data for a track
@@ -216,14 +351,18 @@ function firstCondition(track, dir) {
     )?.['Condition'] || null;
 }
 
-function buildTrackTabs(tracks) {
+function buildTrackTabs(tracks, selected = tracks[0]) {
     const container = document.getElementById('track-tabs');
-    container.innerHTML = tracks.map((track, i) =>
-        `<button class="track-tab${i === 0 ? ' active' : ''}" data-track="${escHtml(track)}">
+    container.innerHTML = tracks.map(track =>
+        `<button class="track-tab${track === selected ? ' active' : ''}" data-track="${escHtml(track)}">
             ${escHtml(track.toUpperCase())}
          </button>`
     ).join('');
 
+    // Delegated, so rebuilding the buttons on upgrade keeps working; guarded so
+    // a second build does not bind a second handler.
+    if (container.dataset.wired) return;
+    container.dataset.wired = '1';
     container.addEventListener('click', e => {
         const tab = e.target.closest('.track-tab');
         if (!tab) return;
@@ -437,15 +576,11 @@ let activeRacerName = null;
 let _battleDataPromise = null;
 let _battleData        = null;   // { standings, byCourse, headToHead, withheldCount }
 
-function loadBattleData() {
-    if (_battleDataPromise) return _battleDataPromise;
+let _battleFailed = false;
 
-    _battleDataPromise = Promise.all([
-        fetchSheetData(ELO_CALC_GID),
-        // Resolve rather than reject — a dead YouTube fetch must not take the
-        // leaderboard down with it, it just falls back to date-only gating.
-        loadVideosOnce().catch(() => null),
-    ]).then(([rows, ytResult]) => {
+// Pulled out of loadBattleData so a late live-data upgrade can re-derive
+// standings without re-entering the cached promise.
+function buildBattleData(rows, ytResult) {
         const all = BattleEngine.parseMatches(rows);
 
         const outOfOrder = BattleEngine.checkChainOrder(all);
@@ -471,6 +606,24 @@ function loadBattleData() {
             withheldCount: withheld.length,
         };
         return _battleData;
+}
+
+function loadBattleData() {
+    if (_battleDataPromise) return _battleDataPromise;
+
+    _battleDataPromise = Promise.all([
+        getSheetRows(ELO_CALC_GID, {
+            onUpgrade: rows => loadVideosOnce().catch(() => null).then(yt => {
+                buildBattleData(rows, yt);
+                renderBattleLeaderboard();
+            }),
+        }),
+        // Resolve rather than reject — a dead YouTube fetch must not take the
+        // leaderboard down with it, it just falls back to date-only gating.
+        loadVideosOnce().catch(() => null),
+    ]).then(([res, ytResult]) => {
+        _battleFailed = res.source === 'failed';
+        return buildBattleData(res.rows, ytResult);
     });
 
     return _battleDataPromise;
@@ -744,7 +897,8 @@ async function openRacerDetail(playerName) {
             _leaderboardPromise,   // guarantees allRecords is populated before we render TA records
         ]);
     } catch {
-        // If data load fails entirely (all JSONP timeouts), show error rather than stuck spinner
+        // Defensive only: neither loader rejects. The real failure check is below,
+        // since a blocked fetch resolves empty rather than throwing.
         if (activeRacerName !== playerName) return;
         content.innerHTML = `
             <div style="padding:2rem;font-family:var(--font-mono);color:var(--muted);text-align:center">
@@ -759,6 +913,23 @@ async function openRacerDetail(playerName) {
 
     // Guard against a second click overtaking this one
     if (activeRacerName !== playerName) return;
+
+    // A blocked fetch leaves both datasets empty, which renders as "no records on
+    // file" — indistinguishable from a racer who genuinely has none. Refuse to
+    // state that as fact when nothing loaded.
+    if (_leaderboardFailed && _battleFailed) {
+        content.innerHTML = `
+            <div style="padding:2rem;font-family:var(--font-mono);color:var(--muted);text-align:center">
+                <p>COULD NOT LOAD RACER DATA</p>
+                <p style="font-size:0.8rem;margin-top:0.75rem;line-height:1.7">
+                    This network may be blocking docs.google.com.</p>
+                <button class="detail-close" id="detail-close" aria-label="Close racer detail"
+                        style="margin-top:1.5rem">CLOSE ✕</button>
+            </div>`;
+        document.getElementById('detail-close')?.addEventListener('click', closeRacerDetail);
+        document.getElementById('detail-close')?.focus();
+        return;
+    }
 
     renderRacerDetail(playerName, content);
     // Move focus into modal for keyboard/screen reader users
@@ -893,7 +1064,9 @@ function renderRacerDetail(playerName, container) {
         if (!hasH2H && !hasBattle) {
             html += `
                 <div class="detail-section">
-                    <p class="detail-empty">No battle records on file.</p>
+                    <p class="detail-empty">${_battleFailed
+                        ? 'Battle records could not be loaded.'
+                        : 'No battle records on file.'}</p>
                 </div>`;
         }
 
@@ -950,7 +1123,9 @@ function renderRacerDetail(playerName, container) {
                 </tbody>
             </table>`;
     } else {
-        html += `<p class="detail-empty">No time attack records on file.</p>`;
+        html += `<p class="detail-empty">${_leaderboardFailed
+            ? 'Time attack records could not be loaded.'
+            : 'No time attack records on file.'}</p>`;
     }
 
     html += `</div>`; // end detail-group
@@ -1028,14 +1203,24 @@ function closeRacerDetail() {
    BATTLE LEADERBOARD (homepage section)
    ════════════════════════════════════════════════════════════ */
 async function initBattleLeaderboard() {
-    const container = document.getElementById('battle-leaderboard');
-    if (!container) return;
+    if (!document.getElementById('battle-leaderboard')) return;
+    await loadBattleData();
+    renderBattleLeaderboard();
+}
 
-    const { standings, withheldCount } = await loadBattleData();
+function renderBattleLeaderboard() {
+    const container = document.getElementById('battle-leaderboard');
+    if (!container || !_battleData) return;
+
+    const { standings, withheldCount } = _battleData;
 
     if (!standings.length) {
+        // "No battle data available" reads as "nobody has raced", which is a lie
+        // when the fetch simply never got through. Say which one it is.
         container.innerHTML = `<p style="color:var(--muted);font-family:var(--font-mono);padding:2rem 0">
-            No battle data available.</p>`;
+            ${_battleFailed
+                ? 'Could not reach the battle data. This network may be blocking docs.google.com — try another connection.'
+                : 'No battle data available.'}</p>`;
         return;
     }
 
